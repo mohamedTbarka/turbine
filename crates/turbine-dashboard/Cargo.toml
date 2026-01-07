@@ -1,0 +1,44 @@
+[package]
+name = "turbine-dashboard"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Web dashboard for Turbine task queue monitoring"
+
+[[bin]]
+name = "turbine-dashboard"
+path = "src/main.rs"
+
+[dependencies]
+turbine-core = { workspace = true }
+turbine-broker = { workspace = true }
+turbine-backend = { workspace = true }
+turbine-telemetry = { workspace = true }
+
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+clap = { workspace = true }
+
+# Web framework
+axum = { version = "0.7", features = ["ws", "macros"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "fs", "trace"] }
+
+# Server-sent events for real-time updates
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+async-stream = "0.3"
+
+# Templates (optional, for serving HTML)
+askama = { version = "0.12", features = ["with-axum"] }
+askama_axum = "0.4"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
