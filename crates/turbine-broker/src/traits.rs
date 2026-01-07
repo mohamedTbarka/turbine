@@ -126,8 +126,14 @@ pub trait Consumer: Send + Sync {
     /// Negative acknowledge - requeue the message
     async fn nack(&self, delivery_tag: &str) -> BrokerResult<()>;
 
+    /// Negative acknowledge with delay - requeue after a delay (for exponential backoff)
+    async fn nack_with_delay(&self, delivery_tag: &str, delay: Duration) -> BrokerResult<()>;
+
     /// Reject the message without requeuing
     async fn reject(&self, delivery_tag: &str) -> BrokerResult<()>;
+
+    /// Reject and send to dead letter queue
+    async fn reject_to_dlq(&self, delivery_tag: &str, reason: &str) -> BrokerResult<()>;
 }
 
 /// Main broker trait for publishing and consuming messages
@@ -189,6 +195,28 @@ pub trait Broker: Send + Sync + Clone {
 
     /// Get broker statistics
     async fn stats(&self) -> BrokerResult<BrokerStats>;
+
+    /// Get the dead letter queue name for a queue
+    fn dlq_name(&self, queue: &str) -> String {
+        format!("{}.dlq", queue)
+    }
+
+    /// Publish to dead letter queue
+    async fn publish_to_dlq(
+        &self,
+        queue: &str,
+        message: &Message,
+        reason: &str,
+    ) -> BrokerResult<()>;
+
+    /// Get dead letter queue length
+    async fn dlq_length(&self, queue: &str) -> BrokerResult<usize>;
+
+    /// Reprocess a message from DLQ back to main queue
+    async fn reprocess_from_dlq(&self, queue: &str, task_id: &TaskId) -> BrokerResult<bool>;
+
+    /// Purge dead letter queue
+    async fn purge_dlq(&self, queue: &str) -> BrokerResult<usize>;
 }
 
 /// Broker statistics

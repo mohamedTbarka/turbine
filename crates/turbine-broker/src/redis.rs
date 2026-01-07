@@ -124,6 +124,16 @@ impl RedisBroker {
         format!("{}:revoked", KEY_PREFIX)
     }
 
+    /// Get the dead letter queue key
+    fn dlq_key(&self, queue: &str) -> String {
+        format!("{}:dlq:{}", KEY_PREFIX, queue)
+    }
+
+    /// Get the DLQ metadata key for storing failure reasons
+    fn dlq_meta_key(&self, queue: &str, task_id: &TaskId) -> String {
+        format!("{}:dlq:{}:meta:{}", KEY_PREFIX, queue, task_id)
+    }
+
     /// Serialize a message
     fn serialize_message(&self, message: &Message) -> BrokerResult<Vec<u8>> {
         self.config
@@ -465,6 +475,108 @@ impl Broker for RedisBroker {
             ..Default::default()
         })
     }
+
+    async fn publish_to_dlq(
+        &self,
+        queue: &str,
+        message: &Message,
+        reason: &str,
+    ) -> BrokerResult<()> {
+        let mut conn = self.get_conn().await?;
+        let dlq_key = self.dlq_key(queue);
+        let meta_key = self.dlq_meta_key(queue, &message.task_id());
+
+        // Serialize message
+        let data = self.serialize_message(message)?;
+
+        // Store message in DLQ
+        conn.lpush(&dlq_key, &data)
+            .await
+            .map_err(|e| BrokerError::Publish(e.to_string()))?;
+
+        // Store failure metadata
+        let meta = serde_json::json!({
+            "reason": reason,
+            "original_queue": queue,
+            "failed_at": chrono::Utc::now().to_rfc3339(),
+            "retries": message.headers.retries,
+        });
+        conn.set_ex::<_, _, ()>(
+            &meta_key,
+            meta.to_string(),
+            604800, // 7 days TTL
+        )
+        .await
+        .map_err(|e| BrokerError::Internal(e.to_string()))?;
+
+        warn!(
+            "Message {} moved to DLQ for queue {}: {}",
+            message.task_id(),
+            queue,
+            reason
+        );
+
+        Ok(())
+    }
+
+    async fn dlq_length(&self, queue: &str) -> BrokerResult<usize> {
+        let mut conn = self.get_conn().await?;
+        let len: i64 = conn
+            .llen(self.dlq_key(queue))
+            .await
+            .map_err(|e| BrokerError::Internal(e.to_string()))?;
+        Ok(len as usize)
+    }
+
+    async fn reprocess_from_dlq(&self, queue: &str, task_id: &TaskId) -> BrokerResult<bool> {
+        let mut conn = self.get_conn().await?;
+        let dlq_key = self.dlq_key(queue);
+        let queue_key = self.queue_key(queue);
+
+        // Find and remove the message from DLQ
+        let messages: Vec<Vec<u8>> = conn
+            .lrange(&dlq_key, 0, -1)
+            .await
+            .map_err(|e| BrokerError::Internal(e.to_string()))?;
+
+        for data in messages {
+            if let Ok(mut msg) = self.deserialize_message(&data) {
+                if &msg.task_id() == task_id {
+                    // Remove from DLQ
+                    let _: i32 = conn
+                        .lrem(&dlq_key, 1, &data)
+                        .await
+                        .map_err(|e| BrokerError::Internal(e.to_string()))?;
+
+                    // Reset retry count and republish
+                    msg.headers.retries = 0;
+                    let new_data = self.serialize_message(&msg)?;
+
+                    conn.lpush(&queue_key, &new_data)
+                        .await
+                        .map_err(|e| BrokerError::Publish(e.to_string()))?;
+
+                    // Clean up metadata
+                    let meta_key = self.dlq_meta_key(queue, task_id);
+                    let _: Result<i32, _> = conn.del(&meta_key).await;
+
+                    info!("Reprocessed message {} from DLQ to queue {}", task_id, queue);
+                    return Ok(true);
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
+    async fn purge_dlq(&self, queue: &str) -> BrokerResult<usize> {
+        let len = self.dlq_length(queue).await?;
+        let mut conn = self.get_conn().await?;
+        conn.del(self.dlq_key(queue))
+            .await
+            .map_err(|e| BrokerError::Internal(e.to_string()))?;
+        Ok(len)
+    }
 }
 
 /// Redis consumer implementation
@@ -614,6 +726,38 @@ impl Consumer for RedisConsumer {
         Ok(())
     }
 
+    async fn nack_with_delay(&self, delivery_tag: &str, delay: Duration) -> BrokerResult<()> {
+        let (queue, data) = {
+            let mut processing = self.broker.processing.write().await;
+            processing
+                .remove(delivery_tag)
+                .ok_or_else(|| BrokerError::MessageNotFound(delivery_tag.to_string()))?
+        };
+
+        let mut conn = self.broker.get_conn().await?;
+        let processing_key = self.broker.processing_key(&queue);
+
+        // Remove from processing
+        let _: i32 = conn
+            .lrem(&processing_key, 1, &data)
+            .await
+            .map_err(|e| BrokerError::Ack(e.to_string()))?;
+
+        // Deserialize, increment retry count, and add to delayed queue
+        if let Ok(mut message) = self.broker.deserialize_message(&data) {
+            message.headers.retries += 1;
+            self.broker.publish_delayed(&queue, &message, delay).await?;
+            debug!(
+                "Nacked message with delivery tag {}, scheduled retry in {:?}",
+                delivery_tag, delay
+            );
+        } else {
+            warn!("Failed to deserialize message for delayed retry");
+        }
+
+        Ok(())
+    }
+
     async fn reject(&self, delivery_tag: &str) -> BrokerResult<()> {
         let (queue, data) = {
             let mut processing = self.broker.processing.write().await;
@@ -632,6 +776,33 @@ impl Consumer for RedisConsumer {
             .map_err(|e| BrokerError::Ack(e.to_string()))?;
 
         debug!("Rejected message with delivery tag {}", delivery_tag);
+        Ok(())
+    }
+
+    async fn reject_to_dlq(&self, delivery_tag: &str, reason: &str) -> BrokerResult<()> {
+        let (queue, data) = {
+            let mut processing = self.broker.processing.write().await;
+            processing
+                .remove(delivery_tag)
+                .ok_or_else(|| BrokerError::MessageNotFound(delivery_tag.to_string()))?
+        };
+
+        let mut conn = self.broker.get_conn().await?;
+        let processing_key = self.broker.processing_key(&queue);
+
+        // Remove from processing
+        let _: i32 = conn
+            .lrem(&processing_key, 1, &data)
+            .await
+            .map_err(|e| BrokerError::Ack(e.to_string()))?;
+
+        // Deserialize and publish to DLQ
+        if let Ok(message) = self.broker.deserialize_message(&data) {
+            self.broker.publish_to_dlq(&queue, &message, reason).await?;
+        } else {
+            warn!("Failed to deserialize message for DLQ");
+        }
+
         Ok(())
     }
 }

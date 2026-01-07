@@ -35,6 +35,9 @@ tonic = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
 
+# Scheduler
+cron = "0.12"
+
 [features]
 default = []
 proto-gen = ["dep:tonic-build"]

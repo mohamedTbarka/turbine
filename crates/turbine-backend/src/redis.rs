@@ -310,6 +310,47 @@ impl Backend for RedisBackend {
             completed_count,
         })
     }
+
+    async fn store_raw(&self, key: &str, data: &[u8], ttl: Option<Duration>) -> BackendResult<()> {
+        let mut conn = self.get_conn().await?;
+        let full_key = format!("{}:{}", KEY_PREFIX, key);
+
+        if let Some(ttl) = ttl {
+            conn.set_ex::<_, _, ()>(&full_key, data, ttl.as_secs())
+                .await
+                .map_err(|e| BackendError::Storage(e.to_string()))?;
+        } else {
+            conn.set::<_, _, ()>(&full_key, data)
+                .await
+                .map_err(|e| BackendError::Storage(e.to_string()))?;
+        }
+
+        Ok(())
+    }
+
+    async fn get_raw(&self, key: &str) -> BackendResult<Option<Vec<u8>>> {
+        let mut conn = self.get_conn().await?;
+        let full_key = format!("{}:{}", KEY_PREFIX, key);
+
+        let data: Option<Vec<u8>> = conn
+            .get(&full_key)
+            .await
+            .map_err(|e| BackendError::Retrieval(e.to_string()))?;
+
+        Ok(data)
+    }
+
+    async fn delete_raw(&self, key: &str) -> BackendResult<bool> {
+        let mut conn = self.get_conn().await?;
+        let full_key = format!("{}:{}", KEY_PREFIX, key);
+
+        let deleted: i32 = conn
+            .del(&full_key)
+            .await
+            .map_err(|e| BackendError::Storage(e.to_string()))?;
+
+        Ok(deleted > 0)
+    }
 }
 
 /// Async result handle for waiting on task completion

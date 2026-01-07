@@ -137,6 +137,15 @@ pub trait Backend: Send + Sync + Clone {
 
     /// Get backend statistics
     async fn stats(&self) -> BackendResult<BackendStats>;
+
+    /// Store raw bytes (for workflow state, etc.)
+    async fn store_raw(&self, key: &str, data: &[u8], ttl: Option<Duration>) -> BackendResult<()>;
+
+    /// Get raw bytes
+    async fn get_raw(&self, key: &str) -> BackendResult<Option<Vec<u8>>>;
+
+    /// Delete raw data
+    async fn delete_raw(&self, key: &str) -> BackendResult<bool>;
 }
 
 /// Backend statistics

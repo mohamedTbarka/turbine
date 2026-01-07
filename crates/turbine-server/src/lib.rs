@@ -7,8 +7,12 @@
 
 pub mod api;
 pub mod generated;
+pub mod scheduler;
 pub mod state;
+pub mod workflow;
 
 pub use api::grpc::TurbineServiceImpl;
 pub use generated::turbine as proto;
+pub use scheduler::{ScheduleEntry, Scheduler, SchedulerConfig};
 pub use state::ServerState;
+pub use workflow::{WorkflowEngine, WorkflowOptions, WorkflowState, WorkflowType};
