@@ -6,6 +6,7 @@ members = [
     "crates/turbine-backend",
     "crates/turbine-server",
     "crates/turbine-worker",
+    "crates/turbine-telemetry",
 ]
 
 [workspace.package]
@@ -62,6 +63,7 @@ clap = { version = "4.4", features = ["derive", "env"] }
 turbine-core = { path = "crates/turbine-core" }
 turbine-broker = { path = "crates/turbine-broker" }
 turbine-backend = { path = "crates/turbine-backend" }
+turbine-telemetry = { path = "crates/turbine-telemetry" }
 
 [profile.release]
 lto = true

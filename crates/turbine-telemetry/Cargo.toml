@@ -1,0 +1,38 @@
+[package]
+name = "turbine-telemetry"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Observability layer for Turbine: metrics, tracing, and logging"
+
+[features]
+default = ["metrics", "tracing", "logging"]
+metrics = ["dep:prometheus", "dep:lazy_static"]
+tracing = ["dep:opentelemetry", "dep:opentelemetry-otlp", "dep:opentelemetry_sdk", "dep:tracing-opentelemetry"]
+logging = []
+
+[dependencies]
+turbine-core = { workspace = true }
+
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "time"] }
+time = { version = "0.3", features = ["formatting"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+
+# Prometheus metrics (optional)
+prometheus = { version = "0.13", optional = true }
+lazy_static = { version = "1.4", optional = true }
+
+# OpenTelemetry (optional)
+opentelemetry = { version = "0.21", optional = true }
+opentelemetry-otlp = { version = "0.14", features = ["tonic"], optional = true }
+opentelemetry_sdk = { version = "0.21", features = ["rt-tokio"], optional = true }
+tracing-opentelemetry = { version = "0.22", optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
