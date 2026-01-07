@@ -38,6 +38,9 @@ prost-types = { workspace = true }
 # Scheduler
 cron = "0.12"
 
+# Routing
+regex = "1.10"
+
 [features]
 default = []
 proto-gen = ["dep:tonic-build"]
