@@ -3,10 +3,11 @@
 use anyhow::Result;
 use clap::Parser;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use tonic::transport::Server;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 use turbine_core::TurbineConfig;
+use turbine_server::proto::turbine_service_server::TurbineServiceServer;
 use turbine_server::{ServerState, TurbineServiceImpl};
 
 /// Turbine Server - High-performance distributed task queue
@@ -97,53 +98,14 @@ async fn main() -> Result<()> {
     let addr: SocketAddr = config.server.grpc_addr().parse()?;
 
     info!("gRPC server listening on {}", addr);
-
-    // For now, we'll create a simple TCP listener since we need the generated proto code
-    // In production, this would use tonic's server builder
-
-    // Simple health check endpoint using a TCP listener
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-
     info!("Turbine Server ready");
-    info!("Health check: {} is listening", addr);
 
-    // Simple request handler loop
-    loop {
-        let (socket, peer) = listener.accept().await?;
-        let service = service.clone();
+    // Start tonic gRPC server
+    Server::builder()
+        .add_service(TurbineServiceServer::new(service))
+        .serve(addr)
+        .await?;
 
-        tokio::spawn(async move {
-            // For now, just handle basic connections
-            // Full gRPC implementation requires generated code
-            info!("Connection from {}", peer);
-
-            let (mut reader, mut writer) = socket.into_split();
-
-            // Read request
-            let mut buf = vec![0u8; 4096];
-            match tokio::io::AsyncReadExt::read(&mut reader, &mut buf).await {
-                Ok(n) if n > 0 => {
-                    let request = String::from_utf8_lossy(&buf[..n]);
-
-                    // Simple HTTP health check
-                    if request.contains("GET /health") {
-                        let health = service.health_check().await;
-                        let response = format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{}",
-                            serde_json::json!({
-                                "status": health.status,
-                                "version": health.version,
-                                "uptime": health.uptime,
-                                "broker": health.broker_status,
-                                "backend": health.backend_status
-                            })
-                        );
-                        let _ = tokio::io::AsyncWriteExt::write_all(&mut writer, response.as_bytes()).await;
-                    }
-                }
-                _ => {}
-            }
-        });
-    }
+    Ok(())
 }
 

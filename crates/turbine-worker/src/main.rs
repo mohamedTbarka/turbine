@@ -22,7 +22,7 @@ struct Args {
     worker_id: Option<String>,
 
     /// Number of concurrent task slots
-    #[arg(short = 'c', long, env = "TURBINE_CONCURRENCY")]
+    #[arg(short = 'n', long, env = "TURBINE_CONCURRENCY")]
     concurrency: Option<usize>,
 
     /// Queues to consume from (comma-separated)

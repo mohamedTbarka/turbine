@@ -1,0 +1,82 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "turbine-queue"
+version = "0.1.0"
+description = "High-performance distributed task queue - Python SDK"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    { name = "Turbine Contributors" }
+]
+keywords = ["task-queue", "celery", "distributed", "async", "background-jobs"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+]
+dependencies = [
+    "grpcio>=1.60.0",
+    "grpcio-tools>=1.60.0",
+    "protobuf>=4.25.0",
+]
+
+[project.optional-dependencies]
+django = [
+    "django>=4.0",
+]
+fastapi = [
+    "fastapi>=0.100.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+    "grpcio-tools>=1.60.0",
+]
+all = [
+    "turbine-queue[django,fastapi,dev]",
+]
+
+[project.urls]
+Homepage = "https://github.com/turbine-queue/turbine"
+Documentation = "https://docs.turbine-queue.dev"
+Repository = "https://github.com/turbine-queue/turbine"
+Issues = "https://github.com/turbine-queue/turbine/issues"
+
+[project.scripts]
+turbine = "turbine.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/turbine"]
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

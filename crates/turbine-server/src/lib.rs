@@ -6,7 +6,9 @@
 //! - Workflow orchestration
 
 pub mod api;
+pub mod generated;
 pub mod state;
 
 pub use api::grpc::TurbineServiceImpl;
+pub use generated::turbine as proto;
 pub use state::ServerState;
