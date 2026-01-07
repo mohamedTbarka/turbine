@@ -1,0 +1,487 @@
+syntax = "proto3";
+
+package turbine;
+
+option go_package = "github.com/turbine-queue/turbine/proto";
+
+// TurbineService is the main API for submitting and managing tasks
+service TurbineService {
+    // Submit a new task
+    rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskResponse);
+
+    // Submit multiple tasks in batch
+    rpc SubmitBatch(SubmitBatchRequest) returns (SubmitBatchResponse);
+
+    // Get task status
+    rpc GetTaskStatus(GetTaskStatusRequest) returns (GetTaskStatusResponse);
+
+    // Get task result
+    rpc GetTaskResult(GetTaskResultRequest) returns (GetTaskResultResponse);
+
+    // Wait for task result (long polling)
+    rpc WaitForResult(WaitForResultRequest) returns (WaitForResultResponse);
+
+    // Revoke/cancel a task
+    rpc RevokeTask(RevokeTaskRequest) returns (RevokeTaskResponse);
+
+    // Retry a failed task
+    rpc RetryTask(RetryTaskRequest) returns (RetryTaskResponse);
+
+    // Get queue information
+    rpc GetQueueInfo(GetQueueInfoRequest) returns (GetQueueInfoResponse);
+
+    // Purge a queue
+    rpc PurgeQueue(PurgeQueueRequest) returns (PurgeQueueResponse);
+
+    // Subscribe to task events (streaming)
+    rpc SubscribeEvents(SubscribeEventsRequest) returns (stream TaskEvent);
+
+    // Health check
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// WorkflowService handles workflow operations
+service WorkflowService {
+    // Submit a chain of tasks
+    rpc SubmitChain(SubmitChainRequest) returns (SubmitWorkflowResponse);
+
+    // Submit a group of parallel tasks
+    rpc SubmitGroup(SubmitGroupRequest) returns (SubmitWorkflowResponse);
+
+    // Submit a chord (group + callback)
+    rpc SubmitChord(SubmitChordRequest) returns (SubmitWorkflowResponse);
+
+    // Get workflow status
+    rpc GetWorkflowStatus(GetWorkflowStatusRequest) returns (GetWorkflowStatusResponse);
+}
+
+// Task state enumeration
+enum TaskState {
+    TASK_STATE_UNSPECIFIED = 0;
+    TASK_STATE_PENDING = 1;
+    TASK_STATE_RECEIVED = 2;
+    TASK_STATE_RUNNING = 3;
+    TASK_STATE_SUCCESS = 4;
+    TASK_STATE_FAILURE = 5;
+    TASK_STATE_RETRY = 6;
+    TASK_STATE_REVOKED = 7;
+}
+
+// Task options
+message TaskOptions {
+    // Target queue name
+    string queue = 1;
+
+    // Task priority (higher = more important)
+    uint32 priority = 2;
+
+    // Maximum number of retries
+    uint32 max_retries = 3;
+
+    // Delay between retries in seconds
+    uint64 retry_delay = 4;
+
+    // Hard timeout in seconds
+    uint64 timeout = 5;
+
+    // Soft timeout in seconds (optional)
+    optional uint64 soft_timeout = 6;
+
+    // Execute after this timestamp (Unix epoch seconds)
+    optional int64 eta = 7;
+
+    // Execute after this many seconds from now
+    optional uint64 countdown = 8;
+
+    // Expiration timestamp (Unix epoch seconds)
+    optional int64 expires = 9;
+
+    // Whether to store the result
+    bool store_result = 10;
+
+    // Result TTL in seconds
+    uint64 result_ttl = 11;
+
+    // Idempotency key for deduplication
+    optional string idempotency_key = 12;
+
+    // Custom headers/metadata
+    map<string, string> headers = 13;
+}
+
+// Task definition
+message Task {
+    // Unique task identifier
+    string id = 1;
+
+    // Task name (function/handler name)
+    string name = 2;
+
+    // Positional arguments (JSON-encoded)
+    repeated bytes args = 3;
+
+    // Keyword arguments (JSON-encoded)
+    map<string, bytes> kwargs = 4;
+
+    // Task options
+    TaskOptions options = 5;
+}
+
+// Task metadata
+message TaskMeta {
+    // Current state
+    TaskState state = 1;
+
+    // Number of retries attempted
+    uint32 retries = 2;
+
+    // Creation timestamp (Unix epoch millis)
+    int64 created_at = 3;
+
+    // Start timestamp (Unix epoch millis)
+    optional int64 started_at = 4;
+
+    // Finish timestamp (Unix epoch millis)
+    optional int64 finished_at = 5;
+
+    // Worker ID processing the task
+    optional string worker_id = 6;
+
+    // Error message if failed
+    optional string error = 7;
+
+    // Error traceback
+    optional string traceback = 8;
+}
+
+// Task result
+message TaskResult {
+    // Task ID
+    string task_id = 1;
+
+    // Final state
+    TaskState state = 2;
+
+    // Result value (JSON-encoded, if successful)
+    optional bytes result = 3;
+
+    // Error message (if failed)
+    optional string error = 4;
+
+    // Error traceback (if failed)
+    optional string traceback = 5;
+
+    // Result creation timestamp
+    int64 created_at = 6;
+}
+
+// Submit task request
+message SubmitTaskRequest {
+    // Task name
+    string name = 1;
+
+    // Positional arguments (JSON-encoded)
+    repeated bytes args = 2;
+
+    // Keyword arguments (JSON-encoded)
+    map<string, bytes> kwargs = 3;
+
+    // Task options
+    TaskOptions options = 4;
+
+    // Optional task ID (auto-generated if not provided)
+    optional string task_id = 5;
+
+    // Correlation ID for tracing
+    optional string correlation_id = 6;
+}
+
+// Submit task response
+message SubmitTaskResponse {
+    // Assigned task ID
+    string task_id = 1;
+
+    // Current state (should be PENDING)
+    TaskState state = 2;
+}
+
+// Submit batch request
+message SubmitBatchRequest {
+    // List of tasks to submit
+    repeated SubmitTaskRequest tasks = 1;
+}
+
+// Submit batch response
+message SubmitBatchResponse {
+    // List of task IDs
+    repeated string task_ids = 1;
+
+    // Number of tasks submitted
+    uint32 count = 2;
+}
+
+// Get task status request
+message GetTaskStatusRequest {
+    // Task ID
+    string task_id = 1;
+}
+
+// Get task status response
+message GetTaskStatusResponse {
+    // Task ID
+    string task_id = 1;
+
+    // Task metadata
+    TaskMeta meta = 2;
+}
+
+// Get task result request
+message GetTaskResultRequest {
+    // Task ID
+    string task_id = 1;
+}
+
+// Get task result response
+message GetTaskResultResponse {
+    // Task result (null if not ready)
+    TaskResult result = 1;
+
+    // Whether the result is ready
+    bool ready = 2;
+}
+
+// Wait for result request
+message WaitForResultRequest {
+    // Task ID
+    string task_id = 1;
+
+    // Timeout in seconds (default: 30)
+    uint64 timeout = 2;
+}
+
+// Wait for result response
+message WaitForResultResponse {
+    // Task result
+    TaskResult result = 1;
+
+    // Whether the result was received before timeout
+    bool success = 2;
+}
+
+// Revoke task request
+message RevokeTaskRequest {
+    // Task ID
+    string task_id = 1;
+
+    // Whether to terminate if running
+    bool terminate = 2;
+}
+
+// Revoke task response
+message RevokeTaskResponse {
+    // Whether the revocation was successful
+    bool success = 1;
+
+    // Previous state
+    TaskState previous_state = 2;
+}
+
+// Retry task request
+message RetryTaskRequest {
+    // Task ID
+    string task_id = 1;
+}
+
+// Retry task response
+message RetryTaskResponse {
+    // New task ID
+    string new_task_id = 1;
+
+    // Whether the retry was scheduled
+    bool success = 2;
+}
+
+// Get queue info request
+message GetQueueInfoRequest {
+    // Queue name (optional, returns all if not specified)
+    optional string queue = 1;
+}
+
+// Queue information
+message QueueInfo {
+    // Queue name
+    string name = 1;
+
+    // Number of pending messages
+    uint64 pending = 2;
+
+    // Number of messages being processed
+    uint64 processing = 3;
+
+    // Number of consumers
+    uint32 consumers = 4;
+
+    // Messages per second (throughput)
+    double throughput = 5;
+}
+
+// Get queue info response
+message GetQueueInfoResponse {
+    // Queue information
+    repeated QueueInfo queues = 1;
+}
+
+// Purge queue request
+message PurgeQueueRequest {
+    // Queue name
+    string queue = 1;
+}
+
+// Purge queue response
+message PurgeQueueResponse {
+    // Number of messages purged
+    uint64 purged = 1;
+}
+
+// Subscribe events request
+message SubscribeEventsRequest {
+    // Task IDs to subscribe to (optional, all if empty)
+    repeated string task_ids = 1;
+
+    // Event types to subscribe to (optional, all if empty)
+    repeated string event_types = 2;
+}
+
+// Task event
+message TaskEvent {
+    // Event type
+    string event_type = 1;
+
+    // Task ID
+    string task_id = 2;
+
+    // Task name
+    string task_name = 3;
+
+    // New state
+    TaskState state = 4;
+
+    // Event timestamp
+    int64 timestamp = 5;
+
+    // Additional event data (JSON)
+    optional bytes data = 6;
+}
+
+// Health check request
+message HealthCheckRequest {}
+
+// Health check response
+message HealthCheckResponse {
+    // Service status
+    string status = 1;
+
+    // Version
+    string version = 2;
+
+    // Uptime in seconds
+    uint64 uptime = 3;
+
+    // Broker status
+    string broker_status = 4;
+
+    // Backend status
+    string backend_status = 5;
+}
+
+// Workflow-related messages
+
+// Submit chain request
+message SubmitChainRequest {
+    // Tasks in the chain (executed sequentially)
+    repeated SubmitTaskRequest tasks = 1;
+
+    // Chain options
+    ChainOptions options = 2;
+}
+
+// Chain options
+message ChainOptions {
+    // Stop on first failure
+    bool stop_on_failure = 1;
+
+    // Pass results between tasks
+    bool pass_results = 2;
+}
+
+// Submit group request
+message SubmitGroupRequest {
+    // Tasks in the group (executed in parallel)
+    repeated SubmitTaskRequest tasks = 1;
+
+    // Group options
+    GroupOptions options = 2;
+}
+
+// Group options
+message GroupOptions {
+    // Maximum concurrent tasks (0 = unlimited)
+    uint32 max_concurrency = 1;
+
+    // Continue on failure
+    bool continue_on_failure = 2;
+}
+
+// Submit chord request
+message SubmitChordRequest {
+    // Group of tasks
+    SubmitGroupRequest group = 1;
+
+    // Callback task
+    SubmitTaskRequest callback = 2;
+
+    // Chord options
+    ChordOptions options = 3;
+}
+
+// Chord options
+message ChordOptions {
+    // Pass group results to callback
+    bool pass_results = 1;
+
+    // Execute callback on partial failure
+    bool execute_on_partial_failure = 2;
+}
+
+// Submit workflow response
+message SubmitWorkflowResponse {
+    // Workflow ID
+    string workflow_id = 1;
+
+    // Individual task IDs
+    repeated string task_ids = 2;
+}
+
+// Get workflow status request
+message GetWorkflowStatusRequest {
+    // Workflow ID
+    string workflow_id = 1;
+}
+
+// Get workflow status response
+message GetWorkflowStatusResponse {
+    // Workflow ID
+    string workflow_id = 1;
+
+    // Overall state
+    TaskState state = 2;
+
+    // Individual task statuses
+    repeated TaskMeta task_statuses = 3;
+
+    // Completed count
+    uint32 completed = 4;
+
+    // Total count
+    uint32 total = 5;
+}

@@ -1,0 +1,27 @@
+[package]
+name = "turbine-backend"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Result backend abstraction layer for Turbine"
+
+[dependencies]
+turbine-core = { workspace = true }
+
+tokio = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rmp-serde = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
+
+# Redis
+redis = { workspace = true }
+deadpool-redis = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

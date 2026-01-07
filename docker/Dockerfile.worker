@@ -1,0 +1,41 @@
+# Turbine Worker Dockerfile
+# Multi-stage build for minimal image size
+
+# Build stage
+FROM rust:1.75-bookworm AS builder
+
+WORKDIR /app
+
+# Copy workspace files
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY proto ./proto
+
+# Build release binary
+RUN cargo build --release --package turbine-worker
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /app/target/release/turbine-worker /usr/local/bin/
+
+# Create non-root user
+RUN useradd -m -u 1000 turbine
+USER turbine
+
+# Default configuration
+ENV TURBINE_BROKER_URL=redis://redis:6379
+ENV TURBINE_CONCURRENCY=4
+ENV TURBINE_QUEUES=default
+ENV TURBINE_LOG_LEVEL=info
+
+ENTRYPOINT ["turbine-worker"]

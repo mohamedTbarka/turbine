@@ -1,0 +1,122 @@
+# Turbine Configuration File
+# https://github.com/turbine-queue/turbine
+
+[broker]
+# Broker type: redis, rabbitmq, sqs
+broker_type = "redis"
+
+# Broker URL
+url = "redis://localhost:6379"
+
+# Connection pool size
+pool_size = 10
+
+# Connection timeout in seconds
+connection_timeout = 30
+
+# Visibility timeout for messages (seconds)
+visibility_timeout = 1800
+
+# Prefetch count
+prefetch = 4
+
+[backend]
+# Backend type: redis, postgres, s3, none
+backend_type = "redis"
+
+# Backend URL (uses broker URL if not specified)
+# url = "redis://localhost:6379"
+
+# Default result TTL in seconds
+result_ttl = 86400
+
+# Maximum result size before S3 offload (bytes)
+max_result_size = 1048576
+
+[worker]
+# Worker ID (auto-generated if not specified)
+# id = "worker-1"
+
+# Number of concurrent task slots
+concurrency = 4
+
+# Queues to consume from
+queues = ["default"]
+
+# Heartbeat interval (seconds)
+heartbeat_interval = 30
+
+# Maximum tasks before restart (0 = unlimited)
+max_tasks_per_worker = 0
+
+# Maximum memory before restart (MB, 0 = unlimited)
+max_memory_mb = 0
+
+# Task time limit (seconds)
+task_time_limit = 300
+
+# Subprocess isolation
+subprocess_isolation = false
+
+# Graceful shutdown timeout (seconds)
+shutdown_timeout = 60
+
+[server]
+# Server host
+host = "0.0.0.0"
+
+# gRPC port
+grpc_port = 50051
+
+# REST API port
+rest_port = 8080
+
+# Dashboard port
+dashboard_port = 8081
+
+# Enable REST API
+enable_rest = true
+
+# Enable dashboard
+enable_dashboard = true
+
+# Maximum request size (bytes)
+max_request_size = 16777216
+
+[queues.default]
+priority = 0
+rate_limit = 0
+
+[queues.high]
+priority = 10
+rate_limit = 0
+
+[queues.low]
+priority = -10
+rate_limit = 100
+
+[logging]
+# Log level: trace, debug, info, warn, error
+level = "info"
+
+# Log format: json, text
+format = "text"
+
+# Include timestamps
+timestamps = true
+
+[telemetry]
+# Enable Prometheus metrics
+prometheus_enabled = true
+
+# Prometheus port
+prometheus_port = 9090
+
+# Enable OpenTelemetry tracing
+otel_enabled = false
+
+# OpenTelemetry endpoint
+# otel_endpoint = "http://localhost:4317"
+
+# Service name
+service_name = "turbine"

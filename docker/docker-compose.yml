@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # Redis - Message broker and result backend
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Turbine Server
+  turbine-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+    ports:
+      - "50051:50051"
+      - "8080:8080"
+    environment:
+      - TURBINE_HOST=0.0.0.0
+      - TURBINE_PORT=50051
+      - TURBINE_BROKER_URL=redis://redis:6379
+      - TURBINE_BACKEND_URL=redis://redis:6379
+      - TURBINE_LOG_LEVEL=info
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:50051/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Turbine Worker
+  turbine-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      - TURBINE_BROKER_URL=redis://redis:6379
+      - TURBINE_BACKEND_URL=redis://redis:6379
+      - TURBINE_CONCURRENCY=4
+      - TURBINE_QUEUES=default,high,low
+      - TURBINE_LOG_LEVEL=info
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 2
+
+  # Optional: Redis Commander for debugging
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    profiles:
+      - debug
+
+volumes:
+  redis_data:
+
+networks:
+  default:
+    name: turbine-network
