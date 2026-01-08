@@ -1,0 +1,39 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Create turbine user and group if they don't exist
+        if ! getent group turbine > /dev/null 2>&1; then
+            addgroup --system turbine
+        fi
+
+        if ! getent passwd turbine > /dev/null 2>&1; then
+            adduser --system --ingroup turbine --home /var/lib/turbine \
+                    --no-create-home --gecos "Turbine Task Queue" turbine
+        fi
+
+        # Create required directories
+        install -d -m 750 -o turbine -g turbine /var/log/turbine
+        install -d -m 750 -o turbine -g turbine /var/lib/turbine
+        install -d -m 755 -o root -g root /etc/turbine
+
+        # Set permissions on config file
+        if [ -f /etc/turbine/turbine.toml ]; then
+            chown root:turbine /etc/turbine/turbine.toml
+            chmod 640 /etc/turbine/turbine.toml
+        fi
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

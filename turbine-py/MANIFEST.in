@@ -1,0 +1,21 @@
+# Include proto files
+recursive-include src/turbine/_proto *.py
+recursive-include src/turbine/_proto *.pyi
+
+# Include package data
+include src/turbine/py.typed
+
+# Include documentation
+include README.md
+include LICENSE
+include CHANGELOG.md
+
+# Exclude test and dev files
+exclude .gitignore
+prune tests
+prune .venv
+prune .pytest_cache
+prune __pycache__
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude .DS_Store

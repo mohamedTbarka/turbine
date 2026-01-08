@@ -42,3 +42,21 @@ askama_axum = "0.4"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+
+[package.metadata.deb]
+maintainer = "Turbine Contributors <turbine@example.com>"
+copyright = "2025, Turbine Contributors"
+license-file = ["../../LICENSE", "0"]
+extended-description = """
+Turbine is a high-performance distributed task queue written in Rust.
+This package contains the web dashboard for monitoring tasks,
+workers, and queues with real-time updates.
+"""
+section = "utils"
+priority = "optional"
+depends = "$auto"
+assets = [
+    ["target/release/turbine-dashboard", "usr/bin/", "755"],
+    ["../../debian/turbine-dashboard.service", "lib/systemd/system/", "644"],
+]
+systemd-units = { enable = false }

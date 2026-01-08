@@ -1,0 +1,90 @@
+# Turbine Configuration File
+# /etc/turbine/turbine.toml
+
+[server]
+# gRPC server address
+host = "0.0.0.0"
+port = 50051
+
+# REST API (optional)
+rest_enabled = true
+rest_port = 8080
+
+# TLS configuration (optional)
+# tls_cert = "/etc/turbine/certs/server.crt"
+# tls_key = "/etc/turbine/certs/server.key"
+
+[broker]
+# Broker type: "redis", "rabbitmq", or "sqs"
+type = "redis"
+
+# Redis configuration
+[broker.redis]
+url = "redis://127.0.0.1:6379"
+# password = "your-password"
+database = 0
+pool_size = 10
+
+# RabbitMQ configuration (if using rabbitmq broker)
+# [broker.rabbitmq]
+# url = "amqp://guest:guest@127.0.0.1:5672"
+# exchange = "turbine"
+# exchange_type = "direct"
+
+[backend]
+# Result backend type: "redis", "postgres", or "s3"
+type = "redis"
+
+# Redis result backend
+[backend.redis]
+url = "redis://127.0.0.1:6379"
+database = 1
+result_ttl = 86400  # 24 hours
+
+# PostgreSQL result backend (if using postgres)
+# [backend.postgres]
+# url = "postgres://turbine:password@127.0.0.1:5432/turbine"
+# pool_size = 10
+
+[worker]
+# Worker configuration
+concurrency = 4
+prefetch_count = 8
+default_queue = "default"
+queues = ["default", "high", "low"]
+
+# Task execution settings
+default_timeout = 300      # 5 minutes
+default_soft_timeout = 270 # 4.5 minutes
+max_retries = 3
+retry_delay = 60           # 1 minute
+
+# Graceful shutdown timeout
+shutdown_timeout = 300     # 5 minutes
+
+[scheduler]
+# Beat scheduler configuration
+enabled = true
+storage = "redis"  # or "postgres"
+
+[dashboard]
+# Dashboard configuration
+host = "0.0.0.0"
+port = 5555
+# username = "admin"
+# password = "changeme"
+
+[telemetry]
+# Metrics endpoint
+metrics_enabled = true
+metrics_port = 9090
+
+# Tracing (OpenTelemetry)
+tracing_enabled = false
+# otlp_endpoint = "http://localhost:4317"
+
+[logging]
+# Log level: "trace", "debug", "info", "warn", "error"
+level = "info"
+format = "json"  # or "pretty"
+# file = "/var/log/turbine/turbine.log"

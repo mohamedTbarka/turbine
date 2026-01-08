@@ -1,0 +1,35 @@
+[Unit]
+Description=Turbine Task Queue Server
+Documentation=https://github.com/turbine-queue/turbine
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=turbine
+Group=turbine
+ExecStart=/usr/bin/turbine-server --config /etc/turbine/turbine.toml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ReadWritePaths=/var/log/turbine /var/lib/turbine
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=turbine-server
+
+[Install]
+WantedBy=multi-user.target

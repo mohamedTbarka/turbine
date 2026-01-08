@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "turbine-queue"
-version = "0.1.0"
+dynamic = ["version"]
 description = "High-performance distributed task queue - Python SDK"
 readme = "README.md"
 license = "MIT"
@@ -59,8 +59,27 @@ Issues = "https://github.com/turbine-queue/turbine/issues"
 [project.scripts]
 turbine = "turbine.cli:main"
 
+[tool.hatch.version]
+source = "regex"
+path = "src/turbine/__init__.py"
+pattern = '__version__ = "(?P<version>[^"]+)"'
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/turbine"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
+exclude = [
+    "/.venv",
+    "/.pytest_cache",
+    "/__pycache__",
+]
 
 [tool.black]
 line-length = 100

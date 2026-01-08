@@ -1,0 +1,36 @@
+[Unit]
+Description=Turbine Task Queue Worker (Instance %i)
+Documentation=https://github.com/turbine-queue/turbine
+After=network-online.target turbine-server.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=turbine
+Group=turbine
+ExecStart=/usr/bin/turbine-worker --config /etc/turbine/turbine.toml --name worker-%i
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# Graceful shutdown timeout (allow tasks to complete)
+TimeoutStopSec=300
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ReadWritePaths=/var/log/turbine /var/lib/turbine
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=turbine-worker-%i
+
+[Install]
+WantedBy=multi-user.target

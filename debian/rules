@@ -1,0 +1,44 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export CARGO_HOME = $(CURDIR)/debian/cargo
+export RUSTFLAGS = -C link-arg=-Wl,-z,relro,-z,now
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	cargo build --release --package turbine-server
+	cargo build --release --package turbine-worker
+	cargo build --release --package turbine-dashboard
+
+override_dh_auto_install:
+	# Install binaries
+	install -D -m 755 target/release/turbine-server $(CURDIR)/debian/turbine-server/usr/bin/turbine-server
+	install -D -m 755 target/release/turbine-worker $(CURDIR)/debian/turbine-worker/usr/bin/turbine-worker
+	install -D -m 755 target/release/turbine-dashboard $(CURDIR)/debian/turbine-dashboard/usr/bin/turbine-dashboard
+
+	# Install systemd service files
+	install -D -m 644 debian/turbine-server.service $(CURDIR)/debian/turbine-server/lib/systemd/system/turbine-server.service
+	install -D -m 644 debian/turbine-worker.service $(CURDIR)/debian/turbine-worker/lib/systemd/system/turbine-worker.service
+	install -D -m 644 debian/turbine-worker@.service $(CURDIR)/debian/turbine-worker/lib/systemd/system/turbine-worker@.service
+	install -D -m 644 debian/turbine-dashboard.service $(CURDIR)/debian/turbine-dashboard/lib/systemd/system/turbine-dashboard.service
+
+	# Install default configuration
+	install -D -m 644 debian/turbine.toml $(CURDIR)/debian/turbine-server/etc/turbine/turbine.toml
+
+	# Create directories
+	install -d $(CURDIR)/debian/turbine-server/var/log/turbine
+	install -d $(CURDIR)/debian/turbine-server/var/lib/turbine
+
+override_dh_auto_test:
+	cargo test --release --workspace
+
+override_dh_auto_clean:
+	cargo clean
+	rm -rf $(CARGO_HOME)
+
+override_dh_installsystemd:
+	dh_installsystemd --name=turbine-server
+	dh_installsystemd --name=turbine-worker
+	dh_installsystemd --name=turbine-dashboard

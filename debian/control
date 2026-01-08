@@ -1,0 +1,45 @@
+Source: turbine
+Section: utils
+Priority: optional
+Maintainer: Turbine Contributors <turbine@example.com>
+Build-Depends: debhelper-compat (= 13), cargo, rustc (>= 1.75)
+Standards-Version: 4.6.2
+Homepage: https://github.com/turbine-queue/turbine
+Rules-Requires-Root: no
+
+Package: turbine-server
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: redis-server | rabbitmq-server
+Description: Turbine task queue server
+ High-performance distributed task queue written in Rust.
+ This package contains the Turbine server component that
+ coordinates task distribution and manages queues.
+
+Package: turbine-worker
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: turbine-server
+Description: Turbine task queue worker
+ High-performance distributed task queue written in Rust.
+ This package contains the Turbine worker component that
+ executes tasks from the queue.
+
+Package: turbine-dashboard
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: turbine-server
+Description: Turbine web dashboard
+ High-performance distributed task queue written in Rust.
+ This package contains the Turbine web dashboard for
+ monitoring tasks and workers.
+
+Package: turbine
+Architecture: any
+Depends: turbine-server (= ${binary:Version}),
+         turbine-worker (= ${binary:Version}),
+         turbine-dashboard (= ${binary:Version}),
+         ${misc:Depends}
+Description: Turbine task queue (metapackage)
+ High-performance distributed task queue written in Rust.
+ This is a metapackage that installs all Turbine components.

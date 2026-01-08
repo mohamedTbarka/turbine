@@ -47,3 +47,23 @@ proto-gen = ["dep:tonic-build"]
 
 [build-dependencies]
 tonic-build = { workspace = true, optional = true }
+
+[package.metadata.deb]
+maintainer = "Turbine Contributors <turbine@example.com>"
+copyright = "2025, Turbine Contributors"
+license-file = ["../../LICENSE", "0"]
+extended-description = """
+Turbine is a high-performance distributed task queue written in Rust.
+This package contains the server component that coordinates task
+distribution, manages queues, and provides the gRPC API.
+"""
+section = "utils"
+priority = "optional"
+depends = "$auto"
+assets = [
+    ["target/release/turbine-server", "usr/bin/", "755"],
+    ["../../debian/turbine.toml", "etc/turbine/turbine.toml", "640"],
+    ["../../debian/turbine-server.service", "lib/systemd/system/", "644"],
+]
+maintainer-scripts = "../../debian/"
+systemd-units = { enable = false }

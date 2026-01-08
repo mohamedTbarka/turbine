@@ -1,0 +1,32 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    purge)
+        # Remove turbine user and group
+        if getent passwd turbine > /dev/null 2>&1; then
+            deluser --quiet --system turbine || true
+        fi
+
+        if getent group turbine > /dev/null 2>&1; then
+            delgroup --quiet --system turbine || true
+        fi
+
+        # Remove directories
+        rm -rf /var/log/turbine
+        rm -rf /var/lib/turbine
+        rm -rf /etc/turbine
+        ;;
+
+    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+
+    *)
+        echo "postrm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

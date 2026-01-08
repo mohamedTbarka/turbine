@@ -1,0 +1,10 @@
+turbine (0.1.0-1) unstable; urgency=medium
+
+  * Initial release.
+  * Turbine server for task coordination
+  * Turbine worker for task execution
+  * Turbine dashboard for web monitoring
+  * Redis broker support
+  * gRPC API for Python SDK integration
+
+ -- Turbine Contributors <turbine@example.com>  Tue, 07 Jan 2025 00:00:00 +0000

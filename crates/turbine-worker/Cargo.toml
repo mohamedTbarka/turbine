@@ -32,3 +32,22 @@ clap = { workspace = true }
 
 # Process management
 nix = { version = "0.27", features = ["signal", "process"] }
+
+[package.metadata.deb]
+maintainer = "Turbine Contributors <turbine@example.com>"
+copyright = "2025, Turbine Contributors"
+license-file = ["../../LICENSE", "0"]
+extended-description = """
+Turbine is a high-performance distributed task queue written in Rust.
+This package contains the worker component that executes tasks
+from the queue with support for concurrency, timeouts, and retries.
+"""
+section = "utils"
+priority = "optional"
+depends = "$auto"
+assets = [
+    ["target/release/turbine-worker", "usr/bin/", "755"],
+    ["../../debian/turbine-worker.service", "lib/systemd/system/", "644"],
+    ["../../debian/turbine-worker@.service", "lib/systemd/system/", "644"],
+]
+systemd-units = { enable = false }

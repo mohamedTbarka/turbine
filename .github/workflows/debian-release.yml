@@ -1,0 +1,143 @@
+name: Build Debian Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Create release'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build-deb:
+    name: Build Debian Package
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - distro: debian
+            codename: bookworm
+            version: 12
+          - distro: debian
+            codename: bullseye
+            version: 11
+          - distro: ubuntu
+            codename: jammy
+            version: 22.04
+          - distro: ubuntu
+            codename: noble
+            version: 24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build in container
+        run: |
+          docker run --rm -v $PWD:/workspace -w /workspace \
+            ${{ matrix.distro }}:${{ matrix.codename }} \
+            bash -c "
+              apt-get update && \
+              apt-get install -y curl build-essential debhelper devscripts pkg-config libssl-dev && \
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+              source ~/.cargo/env && \
+              rustup default stable && \
+              dpkg-buildpackage -us -uc -b
+            "
+
+      - name: Move packages
+        run: |
+          mkdir -p packages
+          mv ../*.deb packages/ || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.distro }}-${{ matrix.codename }}
+          path: packages/*.deb
+
+  build-binary:
+    name: Build Static Binary
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build
+        run: |
+          cross build --release --target ${{ matrix.target }} \
+            --package turbine-server \
+            --package turbine-worker \
+            --package turbine-dashboard
+
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/turbine-server dist/
+          cp target/${{ matrix.target }}/release/turbine-worker dist/
+          cp target/${{ matrix.target }}/release/turbine-dashboard dist/
+          tar -czvf turbine-${{ matrix.target }}.tar.gz -C dist .
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: turbine-${{ matrix.target }}.tar.gz
+
+  release:
+    name: Create Release
+    needs: [build-deb, build-binary]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Organize release files
+        run: |
+          mkdir -p release
+          find artifacts -name "*.deb" -exec cp {} release/ \;
+          find artifacts -name "*.tar.gz" -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum * > SHA256SUMS
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
