@@ -1,0 +1,143 @@
+version: '3.8'
+
+# Development docker-compose with all services for testing
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # RabbitMQ - Alternative message broker
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=turbine
+      - RABBITMQ_DEFAULT_PASS=turbine
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL - Alternative result backend
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=turbine
+      - POSTGRES_PASSWORD=turbine
+      - POSTGRES_DB=turbine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U turbine"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Prometheus - Metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+
+  # Grafana - Metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=turbine
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  # Jaeger - Distributed tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "6831:6831/udp"   # Thrift compact
+      - "6832:6832/udp"   # Thrift binary
+      - "16686:16686"     # Web UI
+      - "14268:14268"     # HTTP collector
+      - "4317:4317"       # OTLP gRPC
+      - "4318:4318"       # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+
+  # Redis Commander - Redis debugging UI
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+
+  # MinIO - S3-compatible storage for large results
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=turbine
+      - MINIO_ROOT_PASSWORD=turbine123
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Override turbine-server with dev settings
+  turbine-server:
+    environment:
+      - TURBINE_LOG_LEVEL=debug
+      - RUST_LOG=turbine=debug,tower_http=debug
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+      - OTEL_SERVICE_NAME=turbine-server
+    depends_on:
+      - redis
+      - jaeger
+
+  # Override turbine-worker with dev settings
+  turbine-worker:
+    environment:
+      - TURBINE_LOG_LEVEL=debug
+      - RUST_LOG=turbine=debug
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+      - OTEL_SERVICE_NAME=turbine-worker
+    depends_on:
+      - redis
+      - jaeger
+    deploy:
+      replicas: 1  # Single worker for debugging
+
+  # Override turbine-dashboard with dev settings
+  turbine-dashboard:
+    environment:
+      - RUST_LOG=turbine=debug,tower_http=debug
+
+volumes:
+  rabbitmq_data:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+  minio_data:

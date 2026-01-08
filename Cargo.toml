@@ -8,6 +8,7 @@ members = [
     "crates/turbine-worker",
     "crates/turbine-telemetry",
     "crates/turbine-dashboard",
+    "crates/turbine-tests",
 ]
 
 [workspace.package]

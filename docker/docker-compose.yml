@@ -15,30 +15,31 @@ services:
       timeout: 3s
       retries: 5
 
-  # Turbine Server
+  # Turbine Server - gRPC API and task coordination
   turbine-server:
     build:
       context: ..
       dockerfile: docker/Dockerfile.server
     ports:
       - "50051:50051"
-      - "8080:8080"
     environment:
       - TURBINE_HOST=0.0.0.0
       - TURBINE_PORT=50051
       - TURBINE_BROKER_URL=redis://redis:6379
       - TURBINE_BACKEND_URL=redis://redis:6379
       - TURBINE_LOG_LEVEL=info
+      - RUST_LOG=turbine=info
     depends_on:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:50051/health"]
+      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
-  # Turbine Worker
+  # Turbine Worker - Task execution
   turbine-worker:
     build:
       context: ..
@@ -49,23 +50,33 @@ services:
       - TURBINE_CONCURRENCY=4
       - TURBINE_QUEUES=default,high,low
       - TURBINE_LOG_LEVEL=info
+      - RUST_LOG=turbine=info
     depends_on:
       redis:
         condition: service_healthy
     deploy:
       replicas: 2
 
-  # Optional: Redis Commander for debugging
-  redis-commander:
-    image: rediscommander/redis-commander:latest
+  # Turbine Dashboard - Web UI and REST API
+  turbine-dashboard:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dashboard
     ports:
-      - "8081:8081"
+      - "3000:3000"
     environment:
-      - REDIS_HOSTS=local:redis:6379
+      - TURBINE_DASHBOARD_HOST=0.0.0.0
+      - TURBINE_DASHBOARD_PORT=3000
+      - TURBINE_REDIS_URL=redis://redis:6379
+      - RUST_LOG=turbine=info
     depends_on:
-      - redis
-    profiles:
-      - debug
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
 volumes:
   redis_data:

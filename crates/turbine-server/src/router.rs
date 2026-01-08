@@ -503,12 +503,12 @@ mod tests {
     use turbine_core::{Task, Message, MessageHeaders};
 
     fn create_test_task(name: &str) -> Task {
-        Task::new(name, serde_json::json!({}))
+        Task::new(name)
     }
 
     fn create_test_message(queue: &str, priority: u8) -> Message {
         let task = create_test_task("test");
-        let mut message = Message::from_task(&task, Default::default()).unwrap();
+        let mut message = Message::from_task(task, Default::default()).unwrap();
         message.headers.queue = queue.to_string();
         message.headers.priority = priority;
         message
@@ -516,8 +516,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_default_routing() {
+        // When routing is disabled, messages pass through with original queue
         let config = RouterConfigBuilder::new()
-            .default_queue("default")
+            .enabled(false)
             .build();
         let router = TaskRouter::new(config);
 
@@ -529,9 +530,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_fallback_to_default_queue() {
+        // When routing is enabled but no rules match, use default queue
+        let config = RouterConfigBuilder::new()
+            .default_queue("fallback")
+            .priority_queues(false, 3)
+            .build();
+        let router = TaskRouter::new(config);
+
+        let task = create_test_task("my_task");
+        let message = create_test_message("original", 5);
+
+        let decision = router.route(&task, &message).await;
+        assert!(matches!(decision, RoutingDecision::SingleQueue(q) if q == "fallback"));
+    }
+
+    #[tokio::test]
     async fn test_rule_based_routing() {
         let config = RouterConfigBuilder::new()
             .default_queue("default")
+            .priority_queues(false, 3)  // Disable priority queues for this test
             .rule(
                 RoutingRule::new("email_tasks")
                     .with_condition(MatchCondition::TaskNamePrefix { prefix: "send_email".to_string() })
