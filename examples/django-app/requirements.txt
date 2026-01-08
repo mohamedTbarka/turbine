@@ -1,0 +1,14 @@
+# Django
+Django>=4.2,<5.0
+
+# Turbine Python SDK
+turbine-client>=0.1.0
+
+# Or install from local path during development:
+# -e ../../turbine-py
+
+# API
+djangorestframework>=3.14
+
+# Environment
+python-dotenv>=1.0
