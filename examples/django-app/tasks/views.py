@@ -197,21 +197,13 @@ class TaskStatusView(APIView):
         GET /api/task/{task_id}/
         """
         try:
-            result = turbine.get_result(task_id)
-
-            if result is None:
-                return Response({
-                    'task_id': task_id,
-                    'status': 'pending',
-                    'message': 'Task is pending or not found',
-                })
+            result = turbine.get_task_status(task_id)
 
             return Response({
                 'task_id': task_id,
-                'status': result.status,
-                'result': result.result if result.successful else None,
-                'error': result.error if result.failed else None,
-                'traceback': result.traceback if result.failed else None,
+                'status': result.get('status', 'unknown'),
+                'result': result.get('result'),
+                'error': result.get('error'),
             })
 
         except Exception as e:

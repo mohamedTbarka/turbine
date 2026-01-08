@@ -112,6 +112,51 @@ def main() -> int:
         help="Server address",
     )
 
+    # Worker
+    worker_parser = subparsers.add_parser("worker", help="Start a Python task worker")
+    worker_parser.add_argument(
+        "--broker-url",
+        "-b",
+        type=str,
+        default="redis://localhost:6379",
+        help="Broker URL (Redis)",
+    )
+    worker_parser.add_argument(
+        "--backend-url",
+        type=str,
+        default="redis://localhost:6379",
+        help="Backend URL (Redis)",
+    )
+    worker_parser.add_argument(
+        "--queues",
+        "-q",
+        type=str,
+        default="default",
+        help="Comma-separated list of queues to consume from",
+    )
+    worker_parser.add_argument(
+        "--concurrency",
+        "-c",
+        type=int,
+        default=4,
+        help="Number of concurrent task slots",
+    )
+    worker_parser.add_argument(
+        "--include",
+        "-I",
+        type=str,
+        action="append",
+        help="Module to import for task discovery (can be repeated)",
+    )
+    worker_parser.add_argument(
+        "--log-level",
+        "-l",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Log level",
+    )
+
     args = parser.parse_args()
 
     if args.command == "generate-proto":
@@ -130,6 +175,9 @@ def main() -> int:
 
     elif args.command == "status":
         return cmd_status(args)
+
+    elif args.command == "worker":
+        return cmd_worker(args)
 
     else:
         parser.print_help()
@@ -207,6 +255,30 @@ def cmd_status(args) -> int:
             status = client.get_status(args.task_id)
             print(json.dumps(status, indent=2))
             return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_worker(args) -> int:
+    """Start a Python task worker."""
+    from turbine.worker import run_worker
+
+    queues = [q.strip() for q in args.queues.split(",")]
+    modules = args.include or []
+
+    try:
+        run_worker(
+            broker_url=args.broker_url,
+            backend_url=args.backend_url,
+            queues=queues,
+            concurrency=args.concurrency,
+            task_modules=modules,
+            log_level=args.log_level,
+        )
+        return 0
+    except KeyboardInterrupt:
+        return 0
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

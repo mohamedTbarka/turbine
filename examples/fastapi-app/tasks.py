@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # Email Tasks
 # =============================================================================
 
-@task(name='send_email', queue='emails', retry=3, timeout=120)
+@task(name='send_email', queue='emails', max_retries=3, timeout=120)
 def send_email(to: str, subject: str, body: str, html: bool = False) -> dict:
     """Send an email to the specified recipient."""
     logger.info(f"Sending email to {to}: {subject}")
@@ -32,7 +32,7 @@ def send_email(to: str, subject: str, body: str, html: bool = False) -> dict:
     }
 
 
-@task(name='send_welcome_email', queue='emails', retry=3)
+@task(name='send_welcome_email', queue='emails', max_retries=3)
 def send_welcome_email(user_id: int, email: str, name: str) -> dict:
     """Send a welcome email to a new user."""
     logger.info(f"Sending welcome email to user {user_id}")

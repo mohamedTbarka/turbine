@@ -32,6 +32,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+worker = [
+    "redis>=5.0.0",
+]
 django = [
     "django>=4.0",
 ]
@@ -45,9 +48,10 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0",
     "grpcio-tools>=1.60.0",
+    "redis>=5.0.0",
 ]
 all = [
-    "turbine-queue[django,fastapi,dev]",
+    "turbine-queue[worker,django,fastapi,dev]",
 ]
 
 [project.urls]

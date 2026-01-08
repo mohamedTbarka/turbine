@@ -33,6 +33,7 @@ from turbine.task import task, Task
 from turbine.result import AsyncResult
 from turbine.workflow import chain, group, chord, Signature
 from turbine.client import TurbineClient
+from turbine.worker import Worker, run_worker
 from turbine.exceptions import (
     TurbineError,
     TaskError,
@@ -57,6 +58,9 @@ __all__ = [
     "group",
     "chord",
     "Signature",
+    # Worker
+    "Worker",
+    "run_worker",
     # Exceptions
     "TurbineError",
     "TaskError",
