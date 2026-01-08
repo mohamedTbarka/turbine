@@ -62,3 +62,9 @@ docs/_build/
 # Logs
 *.log
 logs/
+
+# SQLite databases
+*.sqlite
+*.sqlite3
+*.db
+db.sqlite3

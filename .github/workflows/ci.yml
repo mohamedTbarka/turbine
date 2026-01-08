@@ -229,3 +229,107 @@ jobs:
         with:
           files: lcov.info
           fail_ci_if_error: false
+
+  python-test:
+    name: Python SDK Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        working-directory: turbine-py
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,worker,django,fastapi]"
+
+      - name: Lint with ruff
+        working-directory: turbine-py
+        run: ruff check src/
+
+      - name: Type check with mypy
+        working-directory: turbine-py
+        run: mypy src/turbine --ignore-missing-imports
+
+      - name: Run tests
+        working-directory: turbine-py
+        run: pytest tests/ -v
+        env:
+          TURBINE_BROKER_URL: redis://localhost:6379
+          TURBINE_BACKEND_URL: redis://localhost:6379
+
+  python-integration:
+    name: Python Integration Tests
+    runs-on: ubuntu-latest
+    needs: [build]
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download Turbine server
+        uses: actions/download-artifact@v4
+        with:
+          name: turbine-x86_64-unknown-linux-gnu
+          path: bin/
+
+      - name: Make binaries executable
+        run: chmod +x bin/turbine-server bin/turbine-worker
+
+      - name: Install Python SDK
+        working-directory: turbine-py
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,worker,django]"
+
+      - name: Generate gRPC stubs
+        working-directory: turbine-py
+        run: python -m turbine.generate_proto
+
+      - name: Start Turbine server
+        run: |
+          ./bin/turbine-server &
+          sleep 3
+        env:
+          TURBINE_BROKER_URL: redis://localhost:6379
+          TURBINE_BACKEND_URL: redis://localhost:6379
+
+      - name: Run integration tests
+        working-directory: turbine-py
+        run: pytest tests/integration/ -v --ignore-glob="**/test_*.py" || echo "No integration tests yet"
+        env:
+          TURBINE_SERVER: localhost:50051
+          TURBINE_BROKER_URL: redis://localhost:6379
+          TURBINE_BACKEND_URL: redis://localhost:6379

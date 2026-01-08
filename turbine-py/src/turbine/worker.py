@@ -193,10 +193,9 @@ class Worker:
             default_timeout=default_timeout,
         )
 
-        # Broker needs raw bytes for MessagePack
+        # Both broker and backend use raw bytes for MessagePack
         self.broker = RedisConnection(broker_url, decode_responses=False)
-        # Backend uses strings
-        self.backend = RedisConnection(backend_url, decode_responses=True)
+        self.backend = RedisConnection(backend_url, decode_responses=False)
         self.registry = get_registry()
 
         self._executor: ThreadPoolExecutor | None = None
@@ -452,14 +451,10 @@ class Worker:
             )
 
     def _store_status(self, task_id: str, status: str) -> None:
-        """Store task status in the backend."""
-        key = f"turbine:result:{task_id}"
-        data = {
-            "task_id": task_id,
-            "status": status,
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-        self.backend.conn.hset(key, mapping=data)
+        """Store task status in the backend (compatible with Rust backend)."""
+        # Store state string for quick lookups (turbine:state:{task_id})
+        state_key = f"turbine:state:{task_id}"
+        self.backend.conn.set(state_key, status, ex=86400)
 
     def _store_result(
         self,
@@ -470,33 +465,48 @@ class Worker:
         traceback: str | None = None,
         execution_time: float | None = None,
     ) -> None:
-        """Store task result in the backend."""
-        key = f"turbine:result:{task_id}"
+        """Store task result in the backend (compatible with Rust backend)."""
+        try:
+            import msgpack
+        except ImportError:
+            logger.warning("msgpack not installed, skipping result storage")
+            return
 
-        data = {
+        now = datetime.utcnow().isoformat() + "Z"
+
+        # Build TaskResult structure matching Rust's TaskResult
+        task_result = {
             "task_id": task_id,
-            "status": status,
-            "completed_at": datetime.utcnow().isoformat(),
+            "state": status,  # "success", "failure", etc.
+            "result": result,  # Will be serialized as-is
+            "error": error,
+            "traceback": traceback,
+            "created_at": now,
         }
 
-        if result is not None:
-            try:
-                data["result"] = json.dumps(result)
-            except (TypeError, ValueError):
-                data["result"] = str(result)
+        # Store serialized TaskResult (turbine:result:{task_id})
+        result_key = f"turbine:result:{task_id}"
+        result_data = msgpack.packb(task_result, use_bin_type=True)
+        self.backend.conn.set(result_key, result_data, ex=86400)
 
-        if error is not None:
-            data["error"] = error
+        # Store state string for quick lookups (turbine:state:{task_id})
+        state_key = f"turbine:state:{task_id}"
+        self.backend.conn.set(state_key, status, ex=86400)
 
-        if traceback is not None:
-            data["traceback"] = traceback
-
-        if execution_time is not None:
-            data["execution_time"] = str(execution_time)
-
-        self.backend.conn.hset(key, mapping=data)
-        # Set TTL (24 hours default)
-        self.backend.conn.expire(key, 86400)
+        # Store TaskMeta for status queries (turbine:meta:{task_id})
+        task_meta = {
+            "state": status,
+            "retries": 0,
+            "created_at": now,
+            "started_at": now if status == "running" else None,
+            "finished_at": now if status in ("success", "failure") else None,
+            "worker_id": self.config.worker_id,
+            "error": error,
+            "traceback": traceback,
+        }
+        meta_key = f"turbine:meta:{task_id}"
+        meta_data = msgpack.packb(task_meta, use_bin_type=True)
+        self.backend.conn.set(meta_key, meta_data, ex=86400)
 
 
 def run_worker(

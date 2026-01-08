@@ -15,14 +15,14 @@
   <a href="https://crates.io/crates/turbine-core">
     <img src="https://img.shields.io/crates/v/turbine-core.svg" alt="Crates.io">
   </a>
-  <a href="https://docs.rs/turbine-core">
-    <img src="https://docs.rs/turbine-core/badge.svg" alt="Documentation">
+  <a href="https://pypi.org/project/turbine-queue/">
+    <img src="https://img.shields.io/pypi/v/turbine-queue.svg" alt="PyPI">
+  </a>
+  <a href="https://pypi.org/project/turbine-queue/">
+    <img src="https://img.shields.io/pypi/pyversions/turbine-queue.svg" alt="Python Versions">
   </a>
   <a href="https://github.com/turbine-queue/turbine/blob/main/LICENSE-MIT">
     <img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License">
-  </a>
-  <a href="https://discord.gg/turbine">
-    <img src="https://img.shields.io/discord/123456789?color=7289da&label=discord" alt="Discord">
   </a>
 </p>
 
@@ -111,8 +111,8 @@ See [`turbine.toml`](turbine.toml) for all configuration options.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Python/Django App                        │
-│                    (turbine-py SDK via gRPC)                     │
+│                    Python/Django/FastAPI App                     │
+│                     (turbine-py SDK via gRPC)                    │
 └─────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
@@ -127,19 +127,25 @@ See [`turbine.toml`](turbine.toml) for all configuration options.
 │  └──────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
                                 │
-        ┌───────────────────────┼───────────────────────┐
-        ▼                       ▼                       ▼
-┌───────────────┐     ┌───────────────┐     ┌───────────────┐
-│     Redis     │     │   RabbitMQ    │     │   AWS SQS     │
-│   (Ready)     │     │   (Planned)   │     │   (Planned)   │
-└───────────────┘     └───────────────┘     └───────────────┘
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        Message Broker                            │
+│     Redis (Ready)  │  RabbitMQ (Planned)  │  AWS SQS (Planned)  │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+        ┌───────────────────────┴───────────────────────┐
+        ▼                                               ▼
+┌─────────────────────────────┐     ┌─────────────────────────────┐
+│   Turbine Workers (Rust)    │     │   Python Workers            │
+│  • High-performance tasks   │     │  • Django/FastAPI tasks     │
+│  • Subprocess isolation     │     │  • Native Python execution  │
+│  • Memory efficient         │     │  • Auto-discovery           │
+└─────────────────────────────┘     └─────────────────────────────┘
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Turbine Workers (Rust)                      │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │  Worker Pool  •  Task Executor  •  Subprocess Isolation  │    │
-│  └─────────────────────────────────────────────────────────┘    │
+│                        Result Backend                            │
+│              Redis  │  PostgreSQL (Planned)  │  S3               │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -152,22 +158,89 @@ See [`turbine.toml`](turbine.toml) for all configuration options.
 | [`turbine-backend`](crates/turbine-backend) | Result backend abstraction | ✅ Redis |
 | [`turbine-server`](crates/turbine-server) | gRPC/REST server | ✅ Ready |
 | [`turbine-worker`](crates/turbine-worker) | Task execution engine | ✅ Ready |
-| `turbine-py` | Python SDK | 🚧 Planned |
+| [`turbine-py`](turbine-py) | Python SDK with Django/FastAPI support | ✅ Ready |
 
-## Python SDK (Coming Soon)
+## Python SDK
+
+Install the Python SDK:
+
+```bash
+pip install turbine-queue
+
+# With worker dependencies (for running Python workers)
+pip install turbine-queue[worker]
+
+# With Django integration
+pip install turbine-queue[django]
+```
+
+### Basic Usage
 
 ```python
-from turbine import task, chain, group
+from turbine import Turbine, task
 
-@task(queue="emails", retry=3, timeout=300)
+# Initialize client
+turbine = Turbine(server="localhost:50051")
+
+# Define a task
+@task(queue="emails", max_retries=3, timeout=300)
 def send_email(to: str, subject: str, body: str):
     # Task logic here
     pass
 
-# Simple task
-send_email.delay(to="user@example.com", subject="Hello", body="World")
+# Submit task
+task_id = send_email.delay(to="user@example.com", subject="Hello", body="World")
 
-# Workflow: chain tasks sequentially
+# Check status
+status = turbine.get_task_status(task_id)
+print(f"Task state: {status['state']}")
+```
+
+### Django Integration
+
+```python
+# settings.py
+INSTALLED_APPS = [
+    ...
+    'turbine.django',
+]
+
+TURBINE_SERVER = "localhost:50051"
+TURBINE_BROKER_URL = "redis://localhost:6379"
+
+# tasks.py
+from turbine import task
+
+@task(queue="emails")
+def send_welcome_email(user_id: int):
+    user = User.objects.get(id=user_id)
+    # Send email...
+
+# views.py
+from .tasks import send_welcome_email
+
+def signup(request):
+    user = create_user(request.POST)
+    send_welcome_email.delay(user_id=user.id)
+    return redirect("home")
+```
+
+Run the Python worker:
+
+```bash
+# Using CLI
+turbine worker --broker-url redis://localhost:6379 -I myapp.tasks
+
+# Using Django management command
+python manage.py turbine_worker -Q emails,default
+```
+
+### Workflows
+
+```python
+from turbine import chain, group, chord
+
+# Chain: tasks run sequentially, passing results
 workflow = chain(
     fetch_data.s(url),
     process_data.s(),
@@ -175,10 +248,16 @@ workflow = chain(
 )
 workflow.delay()
 
-# Workflow: run tasks in parallel
+# Group: tasks run in parallel
 group(
     send_email.s(to="user1@example.com", subject="Hi", body="..."),
     send_email.s(to="user2@example.com", subject="Hi", body="..."),
+).delay()
+
+# Chord: group + callback after all complete
+chord(
+    [process_chunk.s(chunk) for chunk in chunks],
+    aggregate_results.s()
 ).delay()
 ```
 
@@ -200,31 +279,33 @@ Coming soon! We're working on comprehensive benchmarks comparing:
 - [x] Basic worker with task execution
 - [x] gRPC server structure
 
-### Phase 2: Python SDK (In Progress)
-- [ ] Python gRPC client
-- [ ] `@task` decorator
-- [ ] Django integration
-- [ ] FastAPI integration
+### Phase 2: Python SDK ✅
+- [x] Python gRPC client
+- [x] `@task` decorator
+- [x] Django integration
+- [x] FastAPI integration
+- [x] Python worker for executing tasks
 
-### Phase 3: Reliability & Workflows
+### Phase 3: Reliability & Workflows ✅
+- [x] Retry with exponential backoff
+- [x] Chain, Group, Chord execution
+- [x] Beat scheduler (cron)
 - [ ] Dead letter queues
-- [ ] Retry with exponential backoff
-- [ ] Chain, Group, Chord execution
-- [ ] Beat scheduler (cron)
 
-### Phase 4: Additional Brokers
-- [ ] RabbitMQ support
-- [ ] AWS SQS support
-
-### Phase 5: Observability
-- [ ] Prometheus metrics
-- [ ] OpenTelemetry tracing
+### Phase 4: Observability ✅
+- [x] Prometheus metrics
+- [x] OpenTelemetry tracing
 - [ ] Web dashboard
 
-### Phase 6: Advanced Features
-- [ ] Rate limiting
-- [ ] Priority queues
+### Phase 5: Advanced Features ✅
+- [x] Rate limiting
+- [x] Priority queues
+- [x] TLS/mTLS encryption
 - [ ] Multi-tenancy
+
+### Phase 6: Additional Brokers (Planned)
+- [ ] RabbitMQ support
+- [ ] AWS SQS support
 
 ## Documentation
 
@@ -243,11 +324,21 @@ Looking to contribute? Check out issues labeled [`good first issue`](https://git
 
 ### Areas We Need Help
 
-- 📚 Documentation improvements
-- 🧪 Test coverage
-- 🐍 Python SDK development
-- 🐰 RabbitMQ broker implementation
-- 📊 Benchmarking
+| Area | Description | Skills |
+|------|-------------|--------|
+| 🐰 RabbitMQ Broker | Implement AMQP 0.9.1 broker support | Rust, RabbitMQ |
+| ☁️ AWS SQS Broker | Implement SQS broker for cloud deployments | Rust, AWS |
+| 📊 Web Dashboard | Real-time monitoring UI for tasks and workers | React/Vue, WebSocket |
+| 🧪 Benchmarks | Performance comparison with Celery | Python, Rust |
+| 📚 Documentation | Guides, tutorials, API docs | Technical Writing |
+| 🔧 Examples | More example apps (Flask, CLI tools) | Python |
+
+### Tech Stack
+
+- **Backend**: Rust (Tokio, Tonic gRPC, Serde)
+- **Broker**: Redis (RabbitMQ/SQS planned)
+- **Python SDK**: Python 3.9+, gRPC, MessagePack
+- **Frameworks**: Django, FastAPI
 
 ## Community
 
