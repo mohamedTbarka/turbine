@@ -3,10 +3,10 @@ fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 
 # Turbine Python SDK
-turbine-client>=0.1.0
+# turbine-queue>=0.1.0
 
-# Or install from local path during development:
-# -e ../../turbine-py
+# Install from local path during development:
+-e ../../turbine-py[worker,fastapi]
 
 # Validation
 pydantic>=2.0

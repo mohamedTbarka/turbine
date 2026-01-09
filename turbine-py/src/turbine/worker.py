@@ -47,6 +47,16 @@ class WorkerConfig:
     task_modules: list[str] = field(default_factory=list)
     default_timeout: int = 300
     log_level: str = "INFO"
+    dlq_enabled: bool = True
+    dlq_queue_name: str = "turbine.dlq"
+    dlq_ttl: int = 604800  # 7 days
+
+    def __post_init__(self):
+        """Validate configuration after initialization."""
+        if not self.queues:
+            raise ValueError("At least one queue must be specified")
+        if self.concurrency < 1:
+            raise ValueError("Concurrency must be at least 1")
 
 
 class TaskRegistry:
@@ -399,6 +409,8 @@ class Worker:
         task_name = message.get("name", "unknown")
         args = message.get("args", [])
         kwargs = message.get("kwargs", {})
+        retries = message.get("retries", 0)
+        max_retries = message.get("max_retries", 3)
 
         logger.info(f"Executing task {task_name}[{task_id}]")
 
@@ -445,6 +457,18 @@ class Worker:
                 traceback=tb,
                 execution_time=execution_time,
             )
+
+            # Route to DLQ if retries exceeded and DLQ is enabled
+            if self.config.dlq_enabled and retries >= max_retries:
+                self._send_to_dlq(
+                    task_id=task_id,
+                    task_name=task_name,
+                    args=args,
+                    kwargs=kwargs,
+                    error=error_msg,
+                    traceback=tb,
+                    retries=retries,
+                )
 
             logger.error(
                 f"Task {task_name}[{task_id}] failed in {execution_time:.3f}s: {error_msg}"
@@ -507,6 +531,66 @@ class Worker:
         meta_key = f"turbine:meta:{task_id}"
         meta_data = msgpack.packb(task_meta, use_bin_type=True)
         self.backend.conn.set(meta_key, meta_data, ex=86400)
+
+    def _send_to_dlq(
+        self,
+        task_id: str,
+        task_name: str,
+        args: list,
+        kwargs: dict,
+        error: str,
+        traceback: str,
+        retries: int,
+    ) -> None:
+        """
+        Send a permanently failed task to the Dead Letter Queue.
+
+        Args:
+            task_id: Task ID
+            task_name: Task name
+            args: Task arguments
+            kwargs: Task keyword arguments
+            error: Error message
+            traceback: Error traceback
+            retries: Number of retries attempted
+        """
+        try:
+            import msgpack
+        except ImportError:
+            logger.warning("msgpack not installed, cannot send to DLQ")
+            return
+
+        try:
+            dlq_entry = {
+                "task_id": task_id,
+                "task_name": task_name,
+                "args": args,
+                "kwargs": kwargs,
+                "error": error,
+                "traceback": traceback,
+                "retries": retries,
+                "failed_at": datetime.utcnow().isoformat() + "Z",
+                "worker_id": self.config.worker_id,
+            }
+
+            # Store in DLQ with task_id as key
+            dlq_key = f"turbine:dlq:{task_id}"
+            dlq_data = msgpack.packb(dlq_entry, use_bin_type=True)
+            self.backend.conn.set(dlq_key, dlq_data, ex=self.config.dlq_ttl)
+
+            # Also add to DLQ index (sorted set by timestamp)
+            timestamp = int(time.time())
+            self.backend.conn.zadd(
+                f"turbine:dlq:index",
+                {task_id: timestamp}
+            )
+
+            logger.warning(
+                f"Task {task_name}[{task_id}] sent to DLQ after {retries} retries"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to send task {task_id} to DLQ: {e}")
 
 
 def run_worker(

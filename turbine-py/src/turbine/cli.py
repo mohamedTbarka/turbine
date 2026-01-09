@@ -157,6 +157,83 @@ def main() -> int:
         help="Log level",
     )
 
+    # DLQ management
+    dlq_parser = subparsers.add_parser("dlq", help="Manage Dead Letter Queue")
+    dlq_subparsers = dlq_parser.add_subparsers(dest="dlq_command", help="DLQ commands")
+
+    # DLQ list
+    dlq_list_parser = dlq_subparsers.add_parser("list", help="List failed tasks in DLQ")
+    dlq_list_parser.add_argument(
+        "--backend-url",
+        "-b",
+        type=str,
+        default="redis://localhost:6379",
+        help="Backend URL (Redis)",
+    )
+    dlq_list_parser.add_argument(
+        "--limit",
+        "-n",
+        type=int,
+        default=20,
+        help="Maximum number of tasks to display",
+    )
+
+    # DLQ stats
+    dlq_stats_parser = dlq_subparsers.add_parser("stats", help="Show DLQ statistics")
+    dlq_stats_parser.add_argument(
+        "--backend-url",
+        "-b",
+        type=str,
+        default="redis://localhost:6379",
+        help="Backend URL (Redis)",
+    )
+
+    # DLQ inspect
+    dlq_inspect_parser = dlq_subparsers.add_parser("inspect", help="Inspect a specific failed task")
+    dlq_inspect_parser.add_argument(
+        "task_id",
+        type=str,
+        help="Task ID to inspect",
+    )
+    dlq_inspect_parser.add_argument(
+        "--backend-url",
+        "-b",
+        type=str,
+        default="redis://localhost:6379",
+        help="Backend URL (Redis)",
+    )
+
+    # DLQ remove
+    dlq_remove_parser = dlq_subparsers.add_parser("remove", help="Remove a task from DLQ")
+    dlq_remove_parser.add_argument(
+        "task_id",
+        type=str,
+        help="Task ID to remove",
+    )
+    dlq_remove_parser.add_argument(
+        "--backend-url",
+        "-b",
+        type=str,
+        default="redis://localhost:6379",
+        help="Backend URL (Redis)",
+    )
+
+    # DLQ clear
+    dlq_clear_parser = dlq_subparsers.add_parser("clear", help="Clear all tasks from DLQ")
+    dlq_clear_parser.add_argument(
+        "--backend-url",
+        "-b",
+        type=str,
+        default="redis://localhost:6379",
+        help="Backend URL (Redis)",
+    )
+    dlq_clear_parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Skip confirmation prompt",
+    )
+
     args = parser.parse_args()
 
     if args.command == "generate-proto":
@@ -178,6 +255,9 @@ def main() -> int:
 
     elif args.command == "worker":
         return cmd_worker(args)
+
+    elif args.command == "dlq":
+        return cmd_dlq(args)
 
     else:
         parser.print_help()
@@ -279,6 +359,71 @@ def cmd_worker(args) -> int:
         return 0
     except KeyboardInterrupt:
         return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_dlq(args) -> int:
+    """DLQ management commands."""
+    from turbine.dlq import DLQManager
+
+    try:
+        manager = DLQManager(backend_url=args.backend_url)
+
+        if args.dlq_command == "list":
+            tasks = manager.list_failed_tasks(limit=args.limit)
+            if not tasks:
+                print("No failed tasks in DLQ")
+                return 0
+
+            print(f"Failed tasks in DLQ (showing {len(tasks)}):\n")
+            for task in tasks:
+                print(f"Task ID: {task['task_id']}")
+                print(f"  Name: {task['task_name']}")
+                print(f"  Failed at: {task['failed_at']}")
+                print(f"  Retries: {task['retries']}")
+                print(f"  Error: {task['error'][:100]}...")
+                print()
+            return 0
+
+        elif args.dlq_command == "stats":
+            stats = manager.get_dlq_stats()
+            print(json.dumps(stats, indent=2))
+            return 0
+
+        elif args.dlq_command == "inspect":
+            task = manager.get_failed_task(args.task_id)
+            if not task:
+                print(f"Task {args.task_id} not found in DLQ", file=sys.stderr)
+                return 1
+            print(json.dumps(task, indent=2, default=str))
+            return 0
+
+        elif args.dlq_command == "remove":
+            if manager.remove_failed_task(args.task_id):
+                print(f"Removed task {args.task_id} from DLQ")
+                return 0
+            else:
+                print(f"Failed to remove task {args.task_id}", file=sys.stderr)
+                return 1
+
+        elif args.dlq_command == "clear":
+            if not args.force:
+                count = manager.count_failed_tasks()
+                response = input(f"Are you sure you want to clear {count} tasks from DLQ? (y/N): ")
+                if response.lower() != 'y':
+                    print("Cancelled")
+                    return 0
+
+            count = manager.clear_dlq()
+            print(f"Cleared {count} tasks from DLQ")
+            return 0
+
+        else:
+            print("Unknown DLQ command", file=sys.stderr)
+            return 1
+
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

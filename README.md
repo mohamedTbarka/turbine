@@ -261,6 +261,27 @@ chord(
 ).delay()
 ```
 
+### Dead Letter Queue (DLQ)
+
+Failed tasks that exceed retry limits are automatically sent to the DLQ for inspection:
+
+```bash
+# List failed tasks
+turbine dlq list
+
+# Show DLQ statistics
+turbine dlq stats
+
+# Inspect a specific failed task
+turbine dlq inspect <task-id>
+
+# Remove a task from DLQ
+turbine dlq remove <task-id>
+
+# Clear all tasks from DLQ
+turbine dlq clear --force
+```
+
 ## Benchmarks
 
 Coming soon! We're working on comprehensive benchmarks comparing:
@@ -290,7 +311,7 @@ Coming soon! We're working on comprehensive benchmarks comparing:
 - [x] Retry with exponential backoff
 - [x] Chain, Group, Chord execution
 - [x] Beat scheduler (cron)
-- [ ] Dead letter queues
+- [x] Dead letter queues (DLQ)
 
 ### Phase 4: Observability ✅
 - [x] Prometheus metrics

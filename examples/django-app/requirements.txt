@@ -2,10 +2,10 @@
 Django>=4.2,<5.0
 
 # Turbine Python SDK
-turbine-client>=0.1.0
+# turbine-queue>=0.1.0
 
-# Or install from local path during development:
-# -e ../../turbine-py
+# Install from local path during development:
+-e ../../turbine-py[worker,django]
 
 # API
 djangorestframework>=3.14
