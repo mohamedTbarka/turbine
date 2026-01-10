@@ -38,6 +38,9 @@ from turbine.tenancy import TenantManager, Tenant, TenantQuotas
 from turbine.dlq import DLQManager
 from turbine.batch import BatchProcessor, Batcher, batch_map
 from turbine.compression import Compressor, CompressionType
+from turbine.dag import DAG, TaskNode, parallel
+from turbine.routing import TaskRouter, LoadBalancer, RateLimiter, RoutingStrategy, consistent_hash_router
+from turbine.backends import ResultBackend, RedisBackend, S3Backend, HybridBackend, get_backend
 from turbine.exceptions import (
     TurbineError,
     TaskError,
@@ -78,6 +81,22 @@ __all__ = [
     # Compression
     "Compressor",
     "CompressionType",
+    # DAG
+    "DAG",
+    "TaskNode",
+    "parallel",
+    # Routing
+    "TaskRouter",
+    "LoadBalancer",
+    "RateLimiter",
+    "RoutingStrategy",
+    "consistent_hash_router",
+    # Backends
+    "ResultBackend",
+    "RedisBackend",
+    "S3Backend",
+    "HybridBackend",
+    "get_backend",
     # Exceptions
     "TurbineError",
     "TaskError",

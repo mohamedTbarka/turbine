@@ -160,7 +160,17 @@ See [`turbine.toml`](turbine.toml) for all configuration options.
 | [`turbine-backend`](crates/turbine-backend) | Result backend abstraction | ✅ Redis |
 | [`turbine-server`](crates/turbine-server) | gRPC/REST server | ✅ Ready |
 | [`turbine-worker`](crates/turbine-worker) | Task execution engine | ✅ Ready |
+| [`turbine-dashboard`](crates/turbine-dashboard) | Web dashboard backend (API) | ✅ Ready |
 | [`turbine-py`](turbine-py) | Python SDK with Django/FastAPI support | ✅ Ready |
+
+## Examples
+
+| Example | Description | Features |
+|---------|-------------|----------|
+| [`examples/django-app`](examples/django-app) | Django integration | Tasks, views, management commands |
+| [`examples/fastapi-app`](examples/fastapi-app) | FastAPI integration | API endpoints, background tasks |
+| [`examples/python`](examples/python) | Basic Python usage | Simple task submission |
+| [`examples/advanced`](examples/advanced) | Advanced patterns | Batch, DAG, routing, multi-tenancy |
 
 ## Python SDK
 
@@ -375,20 +385,96 @@ Automatic compression for large task results:
 # Worker automatically compresses results > 1KB
 # Supports: gzip, zlib, brotli, lz4
 
-# Configure compression
-turbine worker \
-  --broker-url redis://localhost:6379 \
-  --compression gzip \
-  --compression-min-size 1024
-```
-
-Manual compression:
-
-```python
 from turbine.compression import Compressor, CompressionType
 
+# Auto-compression with size threshold
 compressor = Compressor(CompressionType.GZIP)
-compressed, comp_type = compressor.compress(large_data)
+compressed, comp_type = compressor.auto_compress(data, min_size=1024)
+
+# Worker config
+# Results > 1KB automatically compressed
+```
+
+### Task Dependencies (DAG)
+
+Build complex task dependency graphs:
+
+```python
+from turbine import task
+from turbine.dag import DAG, parallel
+
+@task
+def fetch_data(source):
+    return data
+
+@task
+def process_data(data):
+    return processed
+
+@task
+def store_data(processed):
+    return success
+
+# Build dependency graph
+dag = DAG("data-pipeline")
+fetch_id = dag.add_task(fetch_data, args=["api"])
+process_id = dag.add_task(process_data, dependencies=[fetch_id])
+store_id = dag.add_task(store_data, dependencies=[process_id])
+
+# Execute with proper ordering
+results = dag.execute(wait=True)
+
+# Or simple parallel execution
+results = parallel(
+    task1.s(arg1),
+    task2.s(arg2),
+    task3.s(arg3),
+    wait=True
+)
+```
+
+### Load Balancing & Routing
+
+Smart task routing across queues:
+
+```python
+from turbine.routing import LoadBalancer, TaskRouter, RoutingStrategy, consistent_hash_router
+
+# Load balance across queues
+balancer = LoadBalancer(app, queues=["q1", "q2", "q3"])
+result = balancer.route_task(my_task, args=[data], strategy="least_loaded")
+
+# Consistent hashing for partitioning
+queue = consistent_hash_router(
+    my_task,
+    partition_key=f"user:{user_id}",
+    num_queues=8
+)
+
+# Round-robin routing
+router = TaskRouter(queues=["q1", "q2", "q3"], strategy=RoutingStrategy.ROUND_ROBIN)
+queue = router.route()
+```
+
+### Alternative Result Backends
+
+Store results in S3 for large payloads:
+
+```python
+from turbine.backends import S3Backend, HybridBackend
+
+# S3 backend
+s3_backend = S3Backend(
+    bucket="my-results-bucket",
+    region="us-east-1"
+)
+
+# Hybrid: Redis for small, S3 for large (>1MB)
+backend = HybridBackend(
+    redis_url="redis://localhost:6379",
+    s3_bucket="my-results-bucket",
+    size_threshold=1048576  # 1MB
+)
 ```
 
 ## Web Dashboard
@@ -556,13 +642,15 @@ Coming soon! We're working on comprehensive benchmarks comparing:
 ### Phase 7: Optimization & Tools
 - [x] Task result compression (gzip, zlib, brotli, lz4)
 - [x] Batch processing utilities (BatchProcessor, Batcher)
+- [x] Task dependencies and DAG execution
+- [x] Load balancing strategies (round-robin, hash, least-loaded)
+- [x] Result backend: S3 for large payloads
+- [x] Result backend: Hybrid (Redis + S3)
 - [x] Grafana dashboard templates
 - [x] Migration guide from Celery
+- [x] Advanced examples (batch, DAG, routing)
 - [ ] Dashboard web UI (React/Vue/Svelte)
 - [ ] Result backend: PostgreSQL
-- [ ] Result backend: S3 for large payloads
-- [ ] Load balancing strategies
-- [ ] Task dependencies and DAGs
 
 ## Documentation
 
