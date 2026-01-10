@@ -50,6 +50,9 @@ class WorkerConfig:
     dlq_enabled: bool = True
     dlq_queue_name: str = "turbine.dlq"
     dlq_ttl: int = 604800  # 7 days
+    result_compression: bool = True
+    result_compression_min_size: int = 1024  # Only compress results > 1KB
+    result_compression_type: str = "gzip"
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -508,10 +511,30 @@ class Worker:
             "created_at": now,
         }
 
+        # Serialize TaskResult
+        result_data = msgpack.packb(task_result, use_bin_type=True)
+
+        # Compress if enabled and data is large enough
+        compression_type = "none"
+        if self.config.result_compression and len(result_data) >= self.config.result_compression_min_size:
+            try:
+                from turbine.compression import Compressor
+                compressor = Compressor(compression_type=self.config.result_compression_type)
+                result_data, compression_type = compressor.auto_compress(
+                    result_data,
+                    min_size=self.config.result_compression_min_size,
+                )
+            except Exception as e:
+                logger.warning(f"Result compression failed: {e}, storing uncompressed")
+
         # Store serialized TaskResult (turbine:result:{task_id})
         result_key = f"turbine:result:{task_id}"
-        result_data = msgpack.packb(task_result, use_bin_type=True)
         self.backend.conn.set(result_key, result_data, ex=86400)
+
+        # Store compression metadata if compressed
+        if compression_type != "none":
+            comp_meta_key = f"turbine:result:{task_id}:compression"
+            self.backend.conn.set(comp_meta_key, compression_type, ex=86400)
 
         # Store state string for quick lookups (turbine:state:{task_id})
         state_key = f"turbine:state:{task_id}"

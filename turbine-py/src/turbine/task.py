@@ -52,6 +52,7 @@ class Task:
         result_ttl: int = 86400,
         bind: bool = False,
         app: "Turbine | None" = None,
+        tenant_id: str | None = None,
     ):
         """
         Initialize a Task.
@@ -69,6 +70,7 @@ class Task:
             result_ttl: Result TTL in seconds
             bind: Whether to pass the task as the first argument
             app: Turbine application instance
+            tenant_id: Tenant identifier for multi-tenancy
         """
         self.func = func
         self.name = name or f"{func.__module__}.{func.__qualname__}"
@@ -77,6 +79,7 @@ class Task:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.timeout = timeout
+        self.tenant_id = tenant_id
         self.soft_timeout = soft_timeout
         self.store_result = store_result
         self.result_ttl = result_ttl
@@ -120,6 +123,7 @@ class Task:
             soft_timeout=overrides.get("soft_timeout", self.soft_timeout),
             store_result=overrides.get("store_result", self.store_result),
             result_ttl=overrides.get("result_ttl", self.result_ttl),
+            tenant_id=overrides.get("tenant_id", self.tenant_id),
             eta=overrides.get("eta"),
             countdown=overrides.get("countdown"),
             expires=overrides.get("expires"),
@@ -159,6 +163,7 @@ class Task:
         task_id: str | None = None,
         idempotency_key: str | None = None,
         headers: dict[str, str] | None = None,
+        tenant_id: str | None = None,
     ) -> AsyncResult:
         """
         Submit task with custom options.
@@ -178,6 +183,7 @@ class Task:
             task_id: Custom task ID
             idempotency_key: Idempotency key for deduplication
             headers: Custom headers/metadata
+            tenant_id: Tenant identifier (overrides default)
 
         Returns:
             AsyncResult for tracking the task
@@ -209,6 +215,10 @@ class Task:
             option_overrides["idempotency_key"] = idempotency_key
         if headers is not None:
             option_overrides["headers"] = headers
+        if tenant_id is not None:
+            option_overrides["tenant_id"] = tenant_id
+        elif self.tenant_id is not None:
+            option_overrides["tenant_id"] = self.tenant_id
 
         options = self._get_options(**option_overrides)
 
@@ -332,6 +342,7 @@ def task(
     store_result: bool = True,
     result_ttl: int = 86400,
     bind: bool = False,
+    tenant_id: str | None = None,
 ) -> Task | Callable[[F], Task]:
     """
     Decorator to create a Turbine task.
@@ -346,6 +357,10 @@ def task(
         def important_task(x):
             return x * 2
 
+        @task(tenant_id="acme-corp")
+        def tenant_task(x):
+            return x * 2
+
     Args:
         func: The function to wrap (when used without arguments)
         name: Task name (defaults to function path)
@@ -358,6 +373,7 @@ def task(
         store_result: Whether to store the result
         result_ttl: Result TTL in seconds
         bind: Whether to pass the task as the first argument
+        tenant_id: Tenant identifier for multi-tenancy
 
     Returns:
         Task object or decorator function
@@ -369,6 +385,7 @@ def task(
             name=name,
             queue=queue,
             priority=priority,
+            tenant_id=tenant_id,
             max_retries=max_retries,
             retry_delay=retry_delay,
             timeout=timeout,

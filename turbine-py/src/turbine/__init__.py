@@ -34,6 +34,10 @@ from turbine.result import AsyncResult
 from turbine.workflow import chain, group, chord, Signature
 from turbine.client import TurbineClient
 from turbine.worker import Worker, run_worker
+from turbine.tenancy import TenantManager, Tenant, TenantQuotas
+from turbine.dlq import DLQManager
+from turbine.batch import BatchProcessor, Batcher, batch_map
+from turbine.compression import Compressor, CompressionType
 from turbine.exceptions import (
     TurbineError,
     TaskError,
@@ -61,6 +65,19 @@ __all__ = [
     # Worker
     "Worker",
     "run_worker",
+    # Multi-tenancy
+    "TenantManager",
+    "Tenant",
+    "TenantQuotas",
+    # DLQ
+    "DLQManager",
+    # Batch Processing
+    "BatchProcessor",
+    "Batcher",
+    "batch_map",
+    # Compression
+    "Compressor",
+    "CompressionType",
     # Exceptions
     "TurbineError",
     "TaskError",

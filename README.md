@@ -53,12 +53,14 @@ Turbine was built to solve the common pain points of Celery while maintaining a 
 
 ## Features
 
-- **High Performance**: Zero-copy message handling, async I/O, minimal allocations
-- **Reliable**: Exactly-once semantics (where possible), persistent task state, graceful shutdown
-- **Observable**: Built-in Prometheus metrics, OpenTelemetry tracing, web dashboard
-- **Flexible Brokers**: Redis (now), RabbitMQ, AWS SQS (coming soon)
-- **Workflows**: Chains, groups, and chords for complex task composition
+- **High Performance**: Zero-copy message handling, async I/O, minimal allocations, result compression
+- **Reliable**: Dead Letter Queue (DLQ), retry with exponential backoff, persistent task state
+- **Observable**: Prometheus metrics, OpenTelemetry tracing, REST API, Grafana dashboards
+- **Flexible Brokers**: Redis (ready), RabbitMQ, AWS SQS (coming soon)
+- **Workflows**: Chains, groups, chords, and batch processing utilities
 - **Python SDK**: Easy integration with Django, FastAPI, and other frameworks
+- **Multi-Tenancy**: Resource quotas, usage tracking, tenant isolation
+- **Celery Compatible**: Easy migration with familiar API
 
 ## Quick Start
 
@@ -282,6 +284,113 @@ turbine dlq remove <task-id>
 turbine dlq clear --force
 ```
 
+### Multi-Tenancy
+
+Isolate tasks and enforce quotas per tenant:
+
+```bash
+# Create tenant
+turbine tenant create acme-corp "ACME Corporation"
+
+# List tenants
+turbine tenant list
+
+# Get tenant stats
+turbine tenant stats acme-corp
+```
+
+```python
+from turbine import task
+
+# Task assigned to specific tenant
+@task(queue="emails", tenant_id="acme-corp")
+def send_tenant_email(to: str, subject: str):
+    pass
+
+# Submit with tenant override
+process_data.apply_async(
+    args=[data],
+    tenant_id="acme-corp"
+)
+```
+
+Configure quotas per tenant:
+
+```python
+from turbine.tenancy import TenantManager, TenantQuotas
+
+manager = TenantManager()
+quotas = TenantQuotas(
+    max_tasks_per_hour=1000,
+    max_concurrent_tasks=50,
+    max_queue_length=500,
+)
+
+tenant = manager.create_tenant(
+    tenant_id="acme-corp",
+    name="ACME Corporation",
+    quotas=quotas
+)
+```
+
+See [Multi-Tenancy Guide](docs/MULTI_TENANCY.md) for details.
+
+### Batch Processing
+
+Efficiently process large datasets with batch utilities:
+
+```python
+from turbine import task
+from turbine.batch import BatchProcessor, Batcher, batch_map
+
+@task(queue="processing")
+def process_item(item):
+    # Process single item
+    return item * 2
+
+# Simple batch processing
+results = batch_map(process_item, items, batch_size=100)
+
+# Advanced batch processing with progress
+processor = BatchProcessor(
+    task=process_item,
+    chunk_size=100,
+    max_concurrent=10,
+    on_progress=lambda done, total: print(f"{done}/{total}"),
+)
+results = processor.map(items)
+
+# Batch accumulator (auto-submit when full)
+with Batcher(process_item, batch_size=100) as batcher:
+    for item in large_dataset:
+        batcher.add(item)
+    # Auto-submits on exit
+```
+
+### Result Compression
+
+Automatic compression for large task results:
+
+```python
+# Worker automatically compresses results > 1KB
+# Supports: gzip, zlib, brotli, lz4
+
+# Configure compression
+turbine worker \
+  --broker-url redis://localhost:6379 \
+  --compression gzip \
+  --compression-min-size 1024
+```
+
+Manual compression:
+
+```python
+from turbine.compression import Compressor, CompressionType
+
+compressor = Compressor(CompressionType.GZIP)
+compressed, comp_type = compressor.compress(large_data)
+```
+
 ## Web Dashboard
 
 Turbine includes a comprehensive REST API for real-time monitoring and management:
@@ -352,6 +461,50 @@ curl -N http://localhost:8080/api/events
 
 **Frontend UI:** Coming soon! The backend API is complete and ready for a React/Vue/Svelte frontend.
 
+## Monitoring with Grafana
+
+Turbine provides ready-to-use Grafana dashboards:
+
+```bash
+# Import dashboards
+cd grafana/
+# Import turbine-overview.json into Grafana
+
+# Configure Prometheus scraping
+# See grafana/README.md for full setup
+```
+
+**Included Dashboards:**
+- Task throughput and latency
+- Queue depths and consumers
+- Worker statistics
+- Success/failure rates
+- DLQ monitoring
+
+See [Grafana Setup Guide](grafana/README.md) for details.
+
+## Migrating from Celery
+
+Turbine provides a Celery-compatible API for easy migration:
+
+```python
+# Most Celery code works with minimal changes
+# from celery import Celery, task
+from turbine import Turbine, task
+
+# app = Celery('myapp', broker='redis://...')
+app = Turbine(server='localhost:50051')
+
+# Tasks work the same way!
+@task(queue="emails", max_retries=3)
+def send_email(to, subject, body):
+    pass
+
+send_email.delay("user@example.com", "Hello", "World")
+```
+
+See [Migration Guide](docs/MIGRATION_FROM_CELERY.md) for complete migration steps.
+
 ## Benchmarks
 
 Coming soon! We're working on comprehensive benchmarks comparing:
@@ -393,30 +546,43 @@ Coming soon! We're working on comprehensive benchmarks comparing:
 - [x] Rate limiting
 - [x] Priority queues
 - [x] TLS/mTLS encryption
-- [ ] Multi-tenancy
+- [x] Multi-tenancy with quotas and usage tracking
 
 ### Phase 6: Additional Brokers (Planned)
 - [ ] RabbitMQ support
 - [ ] AWS SQS support
 - [ ] Kafka support
 
-### Phase 7: Next Steps (Planned)
+### Phase 7: Optimization & Tools
+- [x] Task result compression (gzip, zlib, brotli, lz4)
+- [x] Batch processing utilities (BatchProcessor, Batcher)
+- [x] Grafana dashboard templates
+- [x] Migration guide from Celery
 - [ ] Dashboard web UI (React/Vue/Svelte)
-- [ ] Multi-tenancy with resource quotas
 - [ ] Result backend: PostgreSQL
 - [ ] Result backend: S3 for large payloads
-- [ ] Task result compression
-- [ ] Grafana dashboard templates
 - [ ] Load balancing strategies
 - [ ] Task dependencies and DAGs
-- [ ] Batch processing optimizations
 
 ## Documentation
 
-- [Configuration Guide](docs/configuration.md) (coming soon)
-- [API Reference](https://docs.rs/turbine-core)
-- [Migration from Celery](docs/migration.md) (coming soon)
-- [Architecture Deep Dive](docs/architecture.md) (coming soon)
+### Guides
+- [Migration from Celery](docs/MIGRATION_FROM_CELERY.md) ✅
+- [Multi-Tenancy Guide](docs/MULTI_TENANCY.md) ✅
+- [Dashboard API Reference](docs/DASHBOARD_API.md) ✅
+- [Dashboard Frontend Proposal](docs/DASHBOARD_PROPOSAL.md) ✅
+- [Grafana Setup](grafana/README.md) ✅
+
+### Coming Soon
+- Configuration Guide
+- Task Best Practices
+- Workflow Patterns
+- Performance Tuning
+- Security Guide
+
+### API Reference
+- [Rust Crates Documentation](https://docs.rs/turbine-core)
+- Python SDK: See docstrings in source code
 
 ## Contributing
 

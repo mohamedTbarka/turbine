@@ -77,6 +77,7 @@ class TaskOptions:
         result_ttl: int = 86400,
         idempotency_key: str | None = None,
         headers: dict[str, str] | None = None,
+        tenant_id: str | None = None,
     ):
         self.queue = queue
         self.priority = priority
@@ -91,6 +92,7 @@ class TaskOptions:
         self.result_ttl = result_ttl
         self.idempotency_key = idempotency_key
         self.headers = headers or {}
+        self.tenant_id = tenant_id
 
     def to_proto(self) -> Any:
         """Convert to protobuf message."""
@@ -143,6 +145,8 @@ class TaskOptions:
             d["expires"] = self.expires
         if self.idempotency_key is not None:
             d["idempotency_key"] = self.idempotency_key
+        if self.tenant_id is not None:
+            d["tenant_id"] = self.tenant_id
         return d
 
 

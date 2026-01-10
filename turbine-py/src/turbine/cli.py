@@ -234,6 +234,59 @@ def main() -> int:
         help="Skip confirmation prompt",
     )
 
+    # Tenant management
+    tenant_parser = subparsers.add_parser("tenant", help="Manage multi-tenancy")
+    tenant_subparsers = tenant_parser.add_subparsers(dest="tenant_command", help="Tenant commands")
+
+    # Tenant create
+    tenant_create_parser = tenant_subparsers.add_parser("create", help="Create a new tenant")
+    tenant_create_parser.add_argument("tenant_id", type=str, help="Tenant ID")
+    tenant_create_parser.add_argument("name", type=str, help="Tenant name")
+    tenant_create_parser.add_argument(
+        "--backend-url", "-b", type=str, default="redis://localhost:6379", help="Backend URL"
+    )
+
+    # Tenant list
+    tenant_list_parser = tenant_subparsers.add_parser("list", help="List all tenants")
+    tenant_list_parser.add_argument(
+        "--backend-url", "-b", type=str, default="redis://localhost:6379", help="Backend URL"
+    )
+
+    # Tenant get
+    tenant_get_parser = tenant_subparsers.add_parser("get", help="Get tenant details")
+    tenant_get_parser.add_argument("tenant_id", type=str, help="Tenant ID")
+    tenant_get_parser.add_argument(
+        "--backend-url", "-b", type=str, default="redis://localhost:6379", help="Backend URL"
+    )
+
+    # Tenant update
+    tenant_update_parser = tenant_subparsers.add_parser("update", help="Update tenant")
+    tenant_update_parser.add_argument("tenant_id", type=str, help="Tenant ID")
+    tenant_update_parser.add_argument("--name", type=str, help="New tenant name")
+    tenant_update_parser.add_argument(
+        "--enabled", type=lambda x: x.lower() == "true", help="Enable/disable tenant (true/false)"
+    )
+    tenant_update_parser.add_argument(
+        "--backend-url", "-b", type=str, default="redis://localhost:6379", help="Backend URL"
+    )
+
+    # Tenant delete
+    tenant_delete_parser = tenant_subparsers.add_parser("delete", help="Delete a tenant")
+    tenant_delete_parser.add_argument("tenant_id", type=str, help="Tenant ID")
+    tenant_delete_parser.add_argument(
+        "--backend-url", "-b", type=str, default="redis://localhost:6379", help="Backend URL"
+    )
+    tenant_delete_parser.add_argument(
+        "--force", "-f", action="store_true", help="Skip confirmation"
+    )
+
+    # Tenant stats
+    tenant_stats_parser = tenant_subparsers.add_parser("stats", help="Get tenant statistics")
+    tenant_stats_parser.add_argument("tenant_id", type=str, help="Tenant ID")
+    tenant_stats_parser.add_argument(
+        "--backend-url", "-b", type=str, default="redis://localhost:6379", help="Backend URL"
+    )
+
     args = parser.parse_args()
 
     if args.command == "generate-proto":
@@ -258,6 +311,9 @@ def main() -> int:
 
     elif args.command == "dlq":
         return cmd_dlq(args)
+
+    elif args.command == "tenant":
+        return cmd_tenant(args)
 
     else:
         parser.print_help()
@@ -424,6 +480,94 @@ def cmd_dlq(args) -> int:
             print("Unknown DLQ command", file=sys.stderr)
             return 1
 
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_tenant(args) -> int:
+    """Tenant management commands."""
+    from turbine.tenancy import TenantManager, TenantQuotas
+
+    try:
+        manager = TenantManager(backend_url=args.backend_url)
+
+        if args.tenant_command == "create":
+            tenant = manager.create_tenant(
+                tenant_id=args.tenant_id,
+                name=args.name,
+            )
+            print(f"Created tenant: {tenant.tenant_id}")
+            print(json.dumps(tenant.to_dict(), indent=2))
+            return 0
+
+        elif args.tenant_command == "list":
+            tenants = manager.list_tenants()
+            if not tenants:
+                print("No tenants found")
+                return 0
+
+            print(f"Tenants ({len(tenants)}):\n")
+            for tenant in tenants:
+                status = "enabled" if tenant.enabled else "disabled"
+                print(f"  {tenant.tenant_id}")
+                print(f"    Name: {tenant.name}")
+                print(f"    Status: {status}")
+                print()
+            return 0
+
+        elif args.tenant_command == "get":
+            tenant = manager.get_tenant(args.tenant_id)
+            if not tenant:
+                print(f"Tenant '{args.tenant_id}' not found", file=sys.stderr)
+                return 1
+            print(json.dumps(tenant.to_dict(), indent=2))
+            return 0
+
+        elif args.tenant_command == "update":
+            updates = {}
+            if args.name:
+                updates["name"] = args.name
+            if args.enabled is not None:
+                updates["enabled"] = args.enabled
+
+            tenant = manager.update_tenant(args.tenant_id, **updates)
+            print(f"Updated tenant: {tenant.tenant_id}")
+            print(json.dumps(tenant.to_dict(), indent=2))
+            return 0
+
+        elif args.tenant_command == "delete":
+            if not args.force:
+                response = input(f"Delete tenant '{args.tenant_id}'? (y/N): ")
+                if response.lower() != 'y':
+                    print("Cancelled")
+                    return 0
+
+            if manager.delete_tenant(args.tenant_id):
+                print(f"Deleted tenant: {args.tenant_id}")
+                return 0
+            else:
+                print(f"Tenant '{args.tenant_id}' not found", file=sys.stderr)
+                return 1
+
+        elif args.tenant_command == "stats":
+            tenant = manager.get_tenant(args.tenant_id)
+            if not tenant:
+                print(f"Tenant '{args.tenant_id}' not found", file=sys.stderr)
+                return 1
+
+            stats = manager.get_tenant_stats(args.tenant_id)
+            print(f"Statistics for tenant '{args.tenant_id}':")
+            print(json.dumps(stats, indent=2))
+            return 0
+
+        else:
+            print("Unknown tenant command", file=sys.stderr)
+            return 1
+
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
