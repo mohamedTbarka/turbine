@@ -282,6 +282,76 @@ turbine dlq remove <task-id>
 turbine dlq clear --force
 ```
 
+## Web Dashboard
+
+Turbine includes a comprehensive REST API for real-time monitoring and management:
+
+### Starting the Dashboard
+
+```bash
+# Build the dashboard
+cargo build --release -p turbine-dashboard
+
+# Run with default settings
+./target/release/turbine-dashboard
+
+# Custom configuration
+./target/release/turbine-dashboard \
+  --host 0.0.0.0 \
+  --port 8080 \
+  --redis-url redis://localhost:6379
+```
+
+### API Endpoints
+
+The dashboard provides the following REST endpoints:
+
+**Health & Overview:**
+- `GET /api/health` - Health check
+- `GET /api/overview` - Dashboard overview statistics
+
+**Workers:**
+- `GET /api/workers` - List all workers
+- `GET /api/workers/:id` - Get worker details
+
+**Queues:**
+- `GET /api/queues` - List all queues
+- `GET /api/queues/:name` - Get queue details
+- `GET /api/queues/:name/stats` - Queue statistics
+- `POST /api/queues/:name/purge` - Purge queue
+
+**Tasks:**
+- `GET /api/tasks` - List recent tasks
+- `GET /api/tasks/:id` - Get task details
+- `POST /api/tasks/:id/revoke` - Revoke a task
+
+**Dead Letter Queue:**
+- `GET /api/dlq/:queue` - Get DLQ info
+- `POST /api/dlq/:queue/reprocess` - Reprocess DLQ messages
+- `POST /api/dlq/:queue/purge` - Purge DLQ
+
+**Metrics & Events:**
+- `GET /api/metrics` - Prometheus metrics
+- `GET /api/events` - Server-Sent Events for real-time updates
+
+### Example API Usage
+
+```bash
+# Get overview
+curl http://localhost:8080/api/overview
+
+# List queues
+curl http://localhost:8080/api/queues
+
+# Get task status
+curl http://localhost:8080/api/tasks/task-id-here
+
+# Listen to real-time events
+curl -N http://localhost:8080/api/events
+```
+
+**Frontend UI:** Coming soon! The backend API is complete and ready for a React/Vue/Svelte frontend.
+
 ## Benchmarks
 
 Coming soon! We're working on comprehensive benchmarks comparing:
@@ -313,10 +383,11 @@ Coming soon! We're working on comprehensive benchmarks comparing:
 - [x] Beat scheduler (cron)
 - [x] Dead letter queues (DLQ)
 
-### Phase 4: Observability ✅
+### Phase 4: Observability
 - [x] Prometheus metrics
 - [x] OpenTelemetry tracing
-- [ ] Web dashboard
+- [x] Web dashboard backend (REST API + SSE)
+- [ ] Web dashboard frontend (UI)
 
 ### Phase 5: Advanced Features ✅
 - [x] Rate limiting
@@ -327,6 +398,18 @@ Coming soon! We're working on comprehensive benchmarks comparing:
 ### Phase 6: Additional Brokers (Planned)
 - [ ] RabbitMQ support
 - [ ] AWS SQS support
+- [ ] Kafka support
+
+### Phase 7: Next Steps (Planned)
+- [ ] Dashboard web UI (React/Vue/Svelte)
+- [ ] Multi-tenancy with resource quotas
+- [ ] Result backend: PostgreSQL
+- [ ] Result backend: S3 for large payloads
+- [ ] Task result compression
+- [ ] Grafana dashboard templates
+- [ ] Load balancing strategies
+- [ ] Task dependencies and DAGs
+- [ ] Batch processing optimizations
 
 ## Documentation
 
@@ -347,12 +430,13 @@ Looking to contribute? Check out issues labeled [`good first issue`](https://git
 
 | Area | Description | Skills |
 |------|-------------|--------|
+| 🎨 Dashboard Frontend | Build React/Vue/Svelte UI consuming the REST API | TypeScript, React/Vue, SSE |
 | 🐰 RabbitMQ Broker | Implement AMQP 0.9.1 broker support | Rust, RabbitMQ |
-| ☁️ AWS SQS Broker | Implement SQS broker for cloud deployments | Rust, AWS |
-| 📊 Web Dashboard | Real-time monitoring UI for tasks and workers | React/Vue, WebSocket |
-| 🧪 Benchmarks | Performance comparison with Celery | Python, Rust |
-| 📚 Documentation | Guides, tutorials, API docs | Technical Writing |
-| 🔧 Examples | More example apps (Flask, CLI tools) | Python |
+| ☁️ AWS SQS Broker | Implement SQS broker for cloud deployments | Rust, AWS SDK |
+| 🧪 Benchmarks | Performance comparison with Celery (memory, throughput, latency) | Python, Rust, Testing |
+| 🏢 Multi-tenancy | Add tenant isolation and resource quotas | Rust, Distributed Systems |
+| 📚 Documentation | Migration guides, best practices, tutorials | Technical Writing |
+| 🔧 Examples | More example apps (Flask, Sanic, CLI tools) | Python |
 
 ### Tech Stack
 
