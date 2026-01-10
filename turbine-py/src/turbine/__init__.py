@@ -40,7 +40,12 @@ from turbine.batch import BatchProcessor, Batcher, batch_map
 from turbine.compression import Compressor, CompressionType
 from turbine.dag import DAG, TaskNode, parallel
 from turbine.routing import TaskRouter, LoadBalancer, RateLimiter, RoutingStrategy, consistent_hash_router
-from turbine.backends import ResultBackend, RedisBackend, S3Backend, HybridBackend, get_backend
+from turbine.backends import ResultBackend, RedisBackend, S3Backend, HybridBackend, PostgreSQLBackend, get_backend
+from turbine.retry import RetryPolicy, RetryStrategy, retry, CircuitBreaker, exponential_backoff, RetryableTask
+from turbine.cache import ResultCache, cached_task, MemoizedTask, invalidate_cache
+from turbine.webhooks import WebhookManager, WebhookEvent, on_task_complete
+from turbine.monitoring import HealthChecker, HealthStatus, MetricsCollector, TaskMonitor, create_health_endpoint, monitor_task_execution
+from turbine.export import ResultExporter, DLQExporter, export_queue_stats, MetricsExporter
 from turbine.exceptions import (
     TurbineError,
     TaskError,
@@ -96,7 +101,36 @@ __all__ = [
     "RedisBackend",
     "S3Backend",
     "HybridBackend",
+    "PostgreSQLBackend",
     "get_backend",
+    # Retry
+    "RetryPolicy",
+    "RetryStrategy",
+    "retry",
+    "CircuitBreaker",
+    "exponential_backoff",
+    "RetryableTask",
+    # Cache
+    "ResultCache",
+    "cached_task",
+    "MemoizedTask",
+    "invalidate_cache",
+    # Webhooks
+    "WebhookManager",
+    "WebhookEvent",
+    "on_task_complete",
+    # Monitoring
+    "HealthChecker",
+    "HealthStatus",
+    "MetricsCollector",
+    "TaskMonitor",
+    "create_health_endpoint",
+    "monitor_task_execution",
+    # Export
+    "ResultExporter",
+    "DLQExporter",
+    "export_queue_stats",
+    "MetricsExporter",
     # Exceptions
     "TurbineError",
     "TaskError",

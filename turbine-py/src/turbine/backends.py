@@ -416,12 +416,200 @@ class LocalFileBackend(ResultBackend):
             return False
 
 
+class PostgreSQLBackend(ResultBackend):
+    """
+    PostgreSQL result backend for persistence and queryability.
+
+    Useful when you need:
+    - Durable result storage
+    - Complex queries on task results
+    - Relational data integration
+    """
+
+    def __init__(
+        self,
+        dsn: str = "postgresql://localhost:5432/turbine",
+        table_name: str = "task_results",
+        auto_create_table: bool = True,
+    ):
+        """
+        Initialize PostgreSQL backend.
+
+        Args:
+            dsn: PostgreSQL connection string
+            table_name: Table name for results
+            auto_create_table: Create table if not exists
+
+        Requires:
+            pip install psycopg2-binary
+        """
+        try:
+            import psycopg2
+            import psycopg2.extras
+        except ImportError:
+            raise ImportError(
+                "psycopg2 is required for PostgreSQL backend. "
+                "Install with: pip install psycopg2-binary"
+            )
+
+        self.dsn = dsn
+        self.table_name = table_name
+        self._psycopg2 = psycopg2
+
+        # Create connection pool
+        self.conn = psycopg2.connect(dsn)
+        self.conn.autocommit = True
+
+        if auto_create_table:
+            self._create_table()
+
+        logger.info(f"Initialized PostgreSQL backend: {dsn}")
+
+    def _create_table(self) -> None:
+        """Create results table if it doesn't exist."""
+        create_sql = f"""
+        CREATE TABLE IF NOT EXISTS {self.table_name} (
+            task_id VARCHAR(255) PRIMARY KEY,
+            state VARCHAR(50) NOT NULL,
+            result JSONB,
+            error TEXT,
+            traceback TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            expires_at TIMESTAMP,
+            INDEX idx_state (state),
+            INDEX idx_created_at (created_at),
+            INDEX idx_expires_at (expires_at)
+        );
+
+        -- Auto-cleanup expired results
+        CREATE INDEX IF NOT EXISTS idx_expired
+        ON {self.table_name} (expires_at)
+        WHERE expires_at IS NOT NULL;
+        """
+
+        with self.conn.cursor() as cur:
+            cur.execute(create_sql)
+
+        logger.info(f"Ensured table {self.table_name} exists")
+
+    def store(self, task_id: str, data: dict[str, Any], ttl: int) -> bool:
+        """Store result in PostgreSQL."""
+        try:
+            import psycopg2.extras
+            from datetime import datetime, timedelta
+
+            expires_at = datetime.utcnow() + timedelta(seconds=ttl)
+
+            insert_sql = f"""
+            INSERT INTO {self.table_name}
+            (task_id, state, result, error, traceback, created_at, expires_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (task_id)
+            DO UPDATE SET
+                state = EXCLUDED.state,
+                result = EXCLUDED.result,
+                error = EXCLUDED.error,
+                traceback = EXCLUDED.traceback,
+                created_at = EXCLUDED.created_at,
+                expires_at = EXCLUDED.expires_at
+            """
+
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    insert_sql,
+                    (
+                        task_id,
+                        data.get("state"),
+                        psycopg2.extras.Json(data.get("result")),
+                        data.get("error"),
+                        data.get("traceback"),
+                        data.get("created_at"),
+                        expires_at,
+                    )
+                )
+
+            logger.debug(f"Stored result to PostgreSQL: {task_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to store result to PostgreSQL: {e}")
+            return False
+
+    def get(self, task_id: str) -> dict[str, Any] | None:
+        """Get result from PostgreSQL."""
+        try:
+            select_sql = f"""
+            SELECT task_id, state, result, error, traceback, created_at
+            FROM {self.table_name}
+            WHERE task_id = %s
+            AND (expires_at IS NULL OR expires_at > NOW())
+            """
+
+            with self.conn.cursor(cursor_factory=self._psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(select_sql, (task_id,))
+                row = cur.fetchone()
+
+                if row:
+                    return dict(row)
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to get result from PostgreSQL: {e}")
+            return None
+
+    def delete(self, task_id: str) -> bool:
+        """Delete result from PostgreSQL."""
+        try:
+            delete_sql = f"DELETE FROM {self.table_name} WHERE task_id = %s"
+
+            with self.conn.cursor() as cur:
+                cur.execute(delete_sql, (task_id,))
+                deleted = cur.rowcount > 0
+
+            logger.debug(f"Deleted result from PostgreSQL: {task_id}")
+            return deleted
+
+        except Exception as e:
+            logger.error(f"Failed to delete result from PostgreSQL: {e}")
+            return False
+
+    def cleanup_expired(self) -> int:
+        """
+        Clean up expired results.
+
+        Returns:
+            Number of results deleted
+        """
+        try:
+            delete_sql = f"""
+            DELETE FROM {self.table_name}
+            WHERE expires_at IS NOT NULL AND expires_at < NOW()
+            """
+
+            with self.conn.cursor() as cur:
+                cur.execute(delete_sql)
+                deleted = cur.rowcount
+
+            logger.info(f"Cleaned up {deleted} expired results")
+            return deleted
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup expired results: {e}")
+            return 0
+
+    def close(self) -> None:
+        """Close database connection."""
+        if self.conn:
+            self.conn.close()
+
+
 def get_backend(backend_type: str, **kwargs) -> ResultBackend:
     """
     Factory function to get result backend.
 
     Args:
-        backend_type: Type of backend ('redis', 's3', 'hybrid', 'file')
+        backend_type: Type of backend ('redis', 's3', 'hybrid', 'file', 'postgres')
         **kwargs: Backend-specific configuration
 
     Returns:
@@ -433,6 +621,9 @@ def get_backend(backend_type: str, **kwargs) -> ResultBackend:
 
         # S3
         backend = get_backend('s3', bucket='my-bucket', region='us-west-2')
+
+        # PostgreSQL
+        backend = get_backend('postgres', dsn='postgresql://localhost/turbine')
 
         # Hybrid
         backend = get_backend(
@@ -446,6 +637,8 @@ def get_backend(backend_type: str, **kwargs) -> ResultBackend:
         return RedisBackend(**kwargs)
     elif backend_type == "s3":
         return S3Backend(**kwargs)
+    elif backend_type == "postgres" or backend_type == "postgresql":
+        return PostgreSQLBackend(**kwargs)
     elif backend_type == "hybrid":
         return HybridBackend(**kwargs)
     elif backend_type == "file":
